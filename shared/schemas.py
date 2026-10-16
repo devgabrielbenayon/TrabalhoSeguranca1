@@ -3,9 +3,84 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+Modo = Literal["didatico", "real"]
+StatusChave = Literal["ativa", "substituida", "revogada"]
+USERNAME_REGEX = r"^[a-z0-9_]{3,20}$"
+
+
+# ---------------------------------------------------------------- cadastro e login (Passo 0)
+
+
+class ChavePublicaIn(BaseModel):
+    modo: Modo
+    public_key: str = Field(description="JSON {e, n} no modo didático, PEM no modo real")
+    prova: str = Field(description="base64 da assinatura de mensagem_prova('registro', …) com a privada")
+
+
+class RegistroIn(BaseModel):
+    username: str = Field(pattern=USERNAME_REGEX)
+    nome: str = Field(min_length=1, max_length=80)
+    senha: str = Field(min_length=6, max_length=128)
+    chaves: list[ChavePublicaIn] = Field(min_length=1, max_length=2)
+
+    @field_validator("chaves")
+    @classmethod
+    def um_por_modo(cls, chaves: list[ChavePublicaIn]) -> list[ChavePublicaIn]:
+        if len({c.modo for c in chaves}) != len(chaves):
+            raise ValueError("envie no máximo uma chave por modo")
+        return chaves
+
+
+class LoginIn(BaseModel):
+    username: str
+    senha: str
+
+
+class UsuarioOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    nome: str
+    avatar: str | None = None
+    is_admin: bool = False
+
+
+class TokenOut(BaseModel):
+    token: str
+    expira_em: datetime
+    usuario: UsuarioOut
+
+
+# ---------------------------------------------------------------- diretório de chaves
+
+
+class ChavePublicaOut(BaseModel):
+    username: str
+    modo: Modo
+    key_id: str
+    public_key: str
+    fingerprint: str
+    status: StatusChave
+    criada_em: datetime
+
+
+class RegistroOut(BaseModel):
+    usuario: UsuarioOut
+    chaves: list[ChavePublicaOut]
+
+
+class DiretorioOut(BaseModel):
+    chaves: dict[str, ChavePublicaOut] = Field(description="username → chave ativa no modo pedido")
+    sem_chave: list[str] = Field(description="usuários inexistentes ou sem chave ativa nesse modo")
+
+
+# ---------------------------------------------------------------- mensagens
 
 
 class Envelope(BaseModel):
@@ -19,7 +94,7 @@ class Envelope(BaseModel):
     from_key_id: str
     to: str
     to_key_id: str
-    mode: Literal["didatico", "real"]
+    mode: Modo
     sent_at: str
     blocks: list[str]
     signature: str = ""
