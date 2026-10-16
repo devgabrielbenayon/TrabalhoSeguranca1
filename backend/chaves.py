@@ -59,6 +59,12 @@ def publicar(db: Session, cliente: Client, publica: ChavePublica) -> PublicKey:
     return registro
 
 
+def chave_ativa(db: Session, client_id: int, modo: str) -> PublicKey | None:
+    return db.scalar(
+        select(PublicKey).where(PublicKey.client_id == client_id, PublicKey.modo == modo, PublicKey.status == "ativa")
+    )
+
+
 def para_saida(registro: PublicKey) -> ChavePublicaOut:
     return ChavePublicaOut(
         username=registro.dono.username,

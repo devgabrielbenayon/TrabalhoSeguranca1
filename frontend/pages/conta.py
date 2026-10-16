@@ -31,11 +31,11 @@ def registrar_paginas(sessao: Sessao) -> None:
             ).classes("text-sm text-gray-600")
             username = ui.input(
                 "Usuário", validation={"3 a 20 caracteres: a-z, 0-9 ou _": lambda v: bool(USERNAME.fullmatch(v.strip().lower()))}
-            ).classes("w-full")
-            nome = ui.input("Nome").classes("w-full")
-            senha = ui.input("Senha (mín. 6)", password=True, password_toggle_button=True).classes("w-full")
+            ).classes("w-full").mark("cadastro-usuario")
+            nome = ui.input("Nome").classes("w-full").mark("cadastro-nome")
+            senha = ui.input("Senha (mín. 6)", password=True, password_toggle_button=True).classes("w-full").mark("cadastro-senha")
             bits = ui.select(BITS_DIDATICO, value=32, label="Tamanho da chave didática").classes("w-full")
-            botao = ui.button("Gerar chaves e cadastrar").classes("w-full")
+            botao = ui.button("Gerar chaves e cadastrar").classes("w-full").mark("cadastro-enviar")
         resultado = ui.column().classes("w-full max-w-3xl mx-auto")
 
         async def enviar() -> None:
@@ -53,7 +53,9 @@ def registrar_paginas(sessao: Sessao) -> None:
             resultado.clear()
             with resultado:
                 _mostrar_geracao(geracao, registro)
-                ui.button("Ir para minhas chaves", on_click=lambda: ui.navigate.to("/"))
+                with ui.row():
+                    ui.button("Ir para o chat", on_click=lambda: ui.navigate.to("/chat"))
+                    ui.button("Minhas chaves", on_click=lambda: ui.navigate.to("/")).props("outline")
 
         botao.on_click(enviar)
 
@@ -73,7 +75,7 @@ def registrar_paginas(sessao: Sessao) -> None:
                     return
                 if not tem_chaves:
                     ui.notify("Este aparelho não tem as suas chaves privadas: não será possível decifrar mensagens.", type="warning")
-                ui.navigate.to("/")
+                ui.navigate.to("/chat")
 
             senha.on("keydown.enter", entrar)
             ui.button("Entrar", on_click=entrar).classes("w-full")

@@ -9,15 +9,19 @@ import os
 from nicegui import ui
 
 from frontend.api_client import ApiCliente
-from frontend.pages import conta
+from frontend.mensageiro import Mensageiro
+from frontend.pages import chat, conta
 from frontend.sessao import Sessao
 
 API_URL = os.environ.get("CRIPTOCHAT_API", "http://127.0.0.1:8000")
+WS_URL = API_URL.replace("http", "ws", 1) + "/ws"
 PORTA = int(os.environ.get("CRIPTOCHAT_PORTA", "8080"))
 HOST = os.environ.get("CRIPTOCHAT_HOST", "127.0.0.1")  # 0.0.0.0 para abrir na rede local (Docker)
 
-sessao = Sessao(ApiCliente(API_URL))
+sessao = Sessao(ApiCliente(API_URL), os.environ.get("CRIPTOCHAT_KEYSTORE", "data/keystore"))
+mensageiro = Mensageiro(sessao, WS_URL)
 conta.registrar_paginas(sessao)
+chat.registrar_paginas(sessao, mensageiro)
 
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(title=f"CriptoChat RSA :{PORTA}", host=HOST, port=PORTA, reload=False, show=False)

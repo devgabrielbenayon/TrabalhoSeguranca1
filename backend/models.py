@@ -77,6 +77,53 @@ class KeyAccess(Base):
     ts: Mapped[datetime] = mapped_column(DateTime, default=agora)
 
 
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(6))  # 1:1 / grupo
+    modo: Mapped[str] = mapped_column(String(10))
+    e2e_ativo: Mapped[bool] = mapped_column(Boolean, default=True)  # só para a demonstração RF16
+    criada_em: Mapped[datetime] = mapped_column(DateTime, default=agora)
+
+    membros: Mapped[list[Client]] = relationship(secondary="participants", order_by="Client.username")
+
+
+class Participant(Base):
+    __tablename__ = "participants"
+
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), primary_key=True)
+
+
+class Message(Base):
+    """Cabeçalho da mensagem, sem conteúdo: o conteúdo só existe cifrado, nos envelopes."""
+
+    __tablename__ = "messages"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # message_id gerado pelo cliente
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("clients.id"))
+    sent_at: Mapped[str] = mapped_column(String(40))  # declarado pelo remetente (vai assinado)
+    recebida_em: Mapped[datetime] = mapped_column(DateTime, default=agora)
+    hops: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class EnvelopeRegistro(Base):
+    """Um envelope por destinatário. status pendente = fila offline."""
+
+    __tablename__ = "envelopes"
+    __table_args__ = (UniqueConstraint("message_id", "recipient_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[str] = mapped_column(ForeignKey("messages.id"), index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
+    to_key_id: Mapped[str] = mapped_column(String(20))
+    conteudo: Mapped[str] = mapped_column(Text)  # o envelope em JSON, exatamente como o remetente assinou
+    status: Mapped[str] = mapped_column(String(10), default="pendente")  # pendente / entregue
+    entregue_em: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+
+
 class KeyEvent(Base):
     """Auditoria: criada, substituida, revogada."""
 

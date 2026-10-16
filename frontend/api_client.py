@@ -6,7 +6,18 @@ from typing import Any, Iterable
 
 import httpx
 
-from shared.schemas import ChavePublicaOut, DiretorioOut, Modo, RegistroIn, RegistroOut, TokenOut, UsuarioOut
+from shared.schemas import (
+    ChavePublicaOut,
+    ConversaIn,
+    ConversaOut,
+    DiretorioOut,
+    Envelope,
+    Modo,
+    RegistroIn,
+    RegistroOut,
+    TokenOut,
+    UsuarioOut,
+)
 
 
 class ErroApi(Exception):
@@ -70,3 +81,19 @@ class ApiCliente:
 
     async def minhas_chaves(self) -> list[ChavePublicaOut]:
         return [ChavePublicaOut.model_validate(c) for c in await self._req("GET", "/api/me/keys")]
+
+    async def chave_por_id(self, key_id: str) -> ChavePublicaOut:
+        return ChavePublicaOut.model_validate(await self._req("GET", f"/api/keys/id/{key_id}"))
+
+    # ------------------------------------------------------------ conversas
+
+    async def criar_conversa(self, participantes: list[str], modo: Modo) -> ConversaOut:
+        dados = ConversaIn(participantes=participantes, modo=modo)
+        return ConversaOut.model_validate(await self._req("POST", "/api/conversations", json=dados.model_dump()))
+
+    async def conversas(self) -> list[ConversaOut]:
+        return [ConversaOut.model_validate(c) for c in await self._req("GET", "/api/conversations")]
+
+    async def historico(self, conversation_id: int) -> list[Envelope]:
+        envelopes = await self._req("GET", "/api/messages", params={"conversation_id": conversation_id})
+        return [Envelope.model_validate(e) for e in envelopes]

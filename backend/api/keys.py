@@ -46,6 +46,18 @@ def buscar_chaves(
     )
 
 
+@router.get("/keys/id/{key_id}", response_model=ChavePublicaOut)
+def chave_por_id(key_id: str, eu: Client = Depends(usuario_atual), db: Session = Depends(get_db)) -> ChavePublicaOut:
+    """Qualquer chave já publicada, inclusive substituída: verificar a assinatura de mensagens antigas."""
+    registro = db.scalar(select(PublicKey).where(PublicKey.key_id == key_id))
+    if registro is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "chave não encontrada")
+    if registro.client_id != eu.id:
+        _registrar_acesso(db, eu.id, registro)
+        db.commit()
+    return chaves.para_saida(registro)
+
+
 @router.get("/me/keys", response_model=list[ChavePublicaOut])
 def minhas_chaves(eu: Client = Depends(usuario_atual), db: Session = Depends(get_db)) -> list[ChavePublicaOut]:
     registros = db.scalars(select(PublicKey).where(PublicKey.client_id == eu.id).order_by(PublicKey.criada_em)).all()
@@ -56,5 +68,6 @@ def _registrar_acesso(db: Session, client_id: int, registro: PublicKey) -> None:
     acesso = db.scalar(select(KeyAccess).where(KeyAccess.client_id == client_id, KeyAccess.owner_id == registro.client_id))
     if acesso is None:
         db.add(KeyAccess(client_id=client_id, owner_id=registro.client_id, key_id=registro.key_id))
-    else:
+        db.flush()
+    elif registro.status == "ativa":
         acesso.key_id, acesso.ts = registro.key_id, agora()

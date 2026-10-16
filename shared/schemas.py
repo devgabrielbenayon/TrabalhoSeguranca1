@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -80,7 +80,27 @@ class DiretorioOut(BaseModel):
     sem_chave: list[str] = Field(description="usuários inexistentes ou sem chave ativa nesse modo")
 
 
+# ---------------------------------------------------------------- conversas
+
+
+class ConversaIn(BaseModel):
+    participantes: list[str] = Field(min_length=1, max_length=20, description="os outros participantes (sem você)")
+    modo: Modo = "real"
+
+
+class ConversaOut(BaseModel):
+    id: int
+    tipo: Literal["1:1", "grupo"]
+    modo: Modo
+    participantes: list[str]
+    e2e_ativo: bool
+    criada_em: datetime
+
+
 # ---------------------------------------------------------------- mensagens
+
+MESSAGE_ID_REGEX = r"^[0-9a-f]{32}$"
+MAX_BLOCOS = 16384  # 2.000 bytes de texto + cabeçalho com blocos de 1 byte (n de 16 bits)
 
 
 class Envelope(BaseModel):
@@ -96,10 +116,32 @@ class Envelope(BaseModel):
     to_key_id: str
     mode: Modo
     sent_at: str
-    blocks: list[str]
-    signature: str = ""
+    blocks: list[Annotated[str, Field(max_length=1024)]] = Field(min_length=1, max_length=MAX_BLOCOS)
+    signature: str = Field(default="", max_length=1024)
 
     def dados_assinados(self) -> bytes:
         """JSON canônico de todos os campos exceto a assinatura."""
         campos = self.model_dump(by_alias=True, exclude={"signature"})
         return json.dumps(campos, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    def para_json(self) -> dict:
+        return self.model_dump(by_alias=True)
+
+
+# ---------------------------------------------------------------- protocolo WebSocket (seção 8.2)
+
+
+class EnvioWS(BaseModel):
+    """Cliente → servidor: uma mensagem = um envelope por participante (inclusive a cópia do remetente)."""
+
+    type: Literal["send"]
+    message_id: str = Field(pattern=MESSAGE_ID_REGEX)
+    conversation_id: int
+    envelopes: list[Envelope] = Field(min_length=1, max_length=21)
+
+
+class AckWS(BaseModel):
+    """Cliente → servidor: confirma que recebeu (e processou) o envelope."""
+
+    type: Literal["ack"]
+    message_id: str = Field(pattern=MESSAGE_ID_REGEX)

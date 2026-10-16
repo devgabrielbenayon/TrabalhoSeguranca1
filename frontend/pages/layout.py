@@ -13,6 +13,8 @@ def cabecalho(sessao: Sessao) -> None:
         ui.link("CriptoChat RSA", "/").classes("text-lg font-bold text-white no-underline")
         with ui.row().classes("items-center gap-4"):
             if sessao.logado:
+                ui.link("Chat", "/chat").classes("text-white")
+                ui.link("Minhas chaves", "/").classes("text-white")
                 ui.label(f"@{sessao.usuario.username}").classes("text-white")
 
                 async def sair() -> None:

@@ -11,6 +11,7 @@ import base64
 import os
 from dataclasses import asdict
 from pathlib import Path
+from typing import Awaitable, Callable
 
 from frontend.api_client import ApiCliente
 from frontend.keystore import Keystore
@@ -31,6 +32,7 @@ class Sessao:
         self.usuario: UsuarioOut | None = None
         self.keystore: Keystore | None = None
         self.tracer = Tracer("cliente")  # o Inspetor (fase 7) assina este rastro
+        self.ao_sair: list[Callable[[], Awaitable[None]]] = []  # ex.: fechar o WebSocket
 
     @property
     def logado(self) -> bool:
@@ -77,6 +79,8 @@ class Sessao:
         return self.keystore.existe()
 
     async def sair(self) -> None:
+        for acao in self.ao_sair:
+            await acao()
         await self.api.logout()
         self.usuario = None
         self.keystore = None
