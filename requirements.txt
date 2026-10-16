@@ -1,0 +1,15 @@
+fastapi>=0.143
+uvicorn[standard]>=0.54
+sqlalchemy>=2.1
+pydantic>=2.14
+nicegui>=3.18
+httpx>=0.28
+websockets>=17.2
+cryptography>=50.0
+argon2-cffi>=25.1
+
+# testes
+pytest>=9.1
+pytest-asyncio>=1.4
+pytest-cov>=7.1
+hypothesis>=6.170
