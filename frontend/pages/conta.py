@@ -88,6 +88,7 @@ def registrar_paginas(sessao: Sessao) -> None:
         cabecalho(sessao)
         with ui.column().classes("w-full max-w-4xl mx-auto"):
             ui.label(f"Olá, {sessao.usuario.nome}").classes("text-2xl font-bold")
+            _gerenciar_chaves(sessao)
             await _minhas_chaves(sessao)
             _diretorio(sessao)
 
@@ -132,8 +133,58 @@ def _cartao_chave(modo: str, public_key: str, rotulo: str) -> None:
             ui.label(f"e = {publica.numeros['e']}, n com {publica.numeros['n'].bit_length()} bits").classes("font-mono text-xs")
 
 
+def _gerenciar_chaves(sessao: Sessao) -> None:
+    """Fluxos 5.4 (troca) e 5.5 (exclusão)."""
+    ui.label("Gerenciar chaves").classes("text-lg font-bold mt-4")
+    for modo, nome in (("real", "real"), ("didatico", "didática")):
+        ativa = sessao.keystore.ativa(modo) if sessao.keystore and sessao.keystore.existe() else None
+        with ui.row().classes("items-center gap-2"):
+            ui.label(f"Chave {nome}:").classes("w-32")
+            ui.label(ativa.publica.key_id if ativa else "nenhuma ativa").classes("font-mono w-48")
+
+            async def trocar(modo: str = modo) -> None:
+                ui.notify("Gerando o novo par e assinando o desafio do servidor…")
+                try:
+                    saida, _ = await sessao.trocar_chave(modo)
+                except (ErroApi, ValueError, httpx.HTTPError) as erro:
+                    ui.notify(mensagem_erro(erro), type="negative")
+                    return
+                ui.notify(f"Nova chave {saida.key_id} publicada; os contatos foram avisados", type="positive")
+                ui.navigate.to("/")
+
+            rotulo = "Trocar chave" if ativa else "Publicar nova chave"
+            ui.button(rotulo, on_click=trocar).props("outline").mark(f"trocar-{modo}")
+            if ativa:
+                ui.button("Excluir chave", on_click=lambda modo=modo: _dialogo_exclusao(sessao, modo)).props(
+                    "outline color=negative"
+                ).mark(f"excluir-{modo}")
+
+
+def _dialogo_exclusao(sessao: Sessao, modo: str) -> None:
+    with ui.dialog() as dialogo, ui.card():
+        ui.label(f"Excluir a chave {modo}").classes("text-lg font-bold")
+        ui.label("O servidor revoga a chave e recusa novas mensagens para você neste modo até publicar outra.").classes("text-sm")
+        senha = ui.input("Confirme a senha", password=True).mark("excluir-senha")
+        apagar = ui.checkbox("Apagar também as chaves privadas deste aparelho (as mensagens antigas ficam ilegíveis)")
+
+        async def confirmar() -> None:
+            try:
+                await sessao.excluir_chave(modo, senha.value, apagar_privadas=apagar.value)
+            except (ErroApi, httpx.HTTPError) as erro:
+                ui.notify(mensagem_erro(erro), type="negative")
+                return
+            dialogo.close()
+            ui.notify("Chave excluída; os contatos foram avisados", type="warning")
+            ui.navigate.to("/")
+
+        with ui.row():
+            ui.button("Excluir", on_click=confirmar).props("color=negative").mark("excluir-confirmar")
+            ui.button("Cancelar", on_click=dialogo.close).props("flat")
+    dialogo.open()
+
+
 async def _minhas_chaves(sessao: Sessao) -> None:
-    ui.label("Minhas chaves").classes("text-lg font-bold mt-4")
+    ui.label("Histórico das minhas chaves").classes("text-lg font-bold mt-4")
     try:
         publicadas = await sessao.api.minhas_chaves()
     except (ErroApi, httpx.HTTPError) as erro:

@@ -1,15 +1,21 @@
 """Cache das chaves públicas dos contatos (passo 1: não pedir a chave a cada mensagem).
 
 Toda chave recebida do servidor é conferida: o key_id anunciado tem de ser o da chave entregue.
+`conhecidas` guarda o último fingerprint visto de cada contato; quando ele muda, `ao_mudar` é chamado
+(o Mensageiro mostra o alerta "a chave de X mudou" e persiste o novo fingerprint no keystore).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 from frontend.api_client import ApiCliente
 from shared.crypto.chaves import ChavePublica, carregar_publica
 from shared.schemas import ChavePublicaOut, Modo
+
+# (username, modo, fingerprint anterior ou None se é o primeiro, fingerprint novo)
+AoMudar = Callable[[str, str, str | None, str], None]
 
 
 class SemChave(Exception):
@@ -25,6 +31,8 @@ class ChaveSuspeita(Exception):
 @dataclass
 class CacheChaves:
     api: ApiCliente
+    conhecidas: dict[tuple[str, str], str] = field(default_factory=dict)  # (username, modo) → fingerprint
+    ao_mudar: AoMudar | None = None
     _ativas: dict[tuple[str, str], ChavePublica] = field(default_factory=dict)  # (username, modo) → chave
     _por_id: dict[str, tuple[str, ChavePublica]] = field(default_factory=dict)  # key_id → (username, chave)
     buscas: int = 0  # quantas vezes foi ao servidor (o Inspetor mostra o efeito do cache)
@@ -60,8 +68,17 @@ class CacheChaves:
         chave = self._conferir(saida)
         if saida.status == "ativa":
             self._ativas[(username, saida.modo)] = chave
+            self.registrar_fingerprint(username, saida.modo, chave.fingerprint)
         self._por_id[chave.key_id] = (username, chave)
         return chave
+
+    def registrar_fingerprint(self, username: str, modo: str, fingerprint: str) -> None:
+        anterior = self.conhecidas.get((username, modo))
+        if anterior == fingerprint:
+            return
+        self.conhecidas[(username, modo)] = fingerprint
+        if self.ao_mudar is not None:
+            self.ao_mudar(username, modo, anterior, fingerprint)
 
     def invalidar(self, username: str) -> None:
         for chave in [k for k in self._ativas if k[0] == username]:

@@ -116,6 +116,9 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 
 
 def _balao(item: ItemMensagem) -> None:
+    if item.status == "aviso":
+        ui.label(item.texto).classes("w-full text-center text-sm bg-amber-100 text-amber-900 rounded p-2")
+        return
     texto = item.texto if item.texto is not None else "[mensagem descartada]"
     with ui.chat_message(name=item.remetente, stamp=item.sent_at[11:16], sent=item.propria).classes("w-full"):
         ui.label(texto).classes("whitespace-pre-wrap" + (" text-red-700 italic" if item.texto is None else ""))

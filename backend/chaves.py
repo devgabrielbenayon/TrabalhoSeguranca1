@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.models import Client, KeyEvent, PublicKey
+from backend.models import Client, Conversation, KeyAccess, KeyEvent, PublicKey
 from shared.crypto import rsa_didatico, rsa_real
 from shared.crypto.chaves import ChavePublica, carregar_publica
 from shared.crypto.prova import mensagem_prova
@@ -57,6 +57,15 @@ def publicar(db: Session, cliente: Client, publica: ChavePublica) -> PublicKey:
     db.add(registro)
     db.add(KeyEvent(client_id=cliente.id, tipo="criada", key_id=publica.key_id, fingerprint=publica.fingerprint))
     return registro
+
+
+def interessados(db: Session, dono: Client) -> set[int]:
+    """Quem pode ter a chave de `dono` em cache: quem já a buscou e quem conversa com ele."""
+    ids = set(db.scalars(select(KeyAccess.client_id).where(KeyAccess.owner_id == dono.id)))
+    for conversa in db.scalars(select(Conversation).where(Conversation.membros.contains(dono))):
+        ids.update(m.id for m in conversa.membros)
+    ids.discard(dono.id)
+    return ids
 
 
 def chave_ativa(db: Session, client_id: int, modo: str) -> PublicKey | None:

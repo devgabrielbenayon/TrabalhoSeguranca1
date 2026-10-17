@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import secrets
+from datetime import timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import chaves
-from backend.auth import usuario_atual
+from backend.auth import usuario_atual, verificar_senha
 from backend.db import agora, get_db
-from backend.models import Client, KeyAccess, PublicKey
-from shared.schemas import ChavePublicaOut, DiretorioOut, Modo
+from backend.models import Client, KeyAccess, KeyChallenge, KeyEvent, PublicKey
+from shared.schemas import ChavePublicaOut, DesafioOut, DiretorioOut, ExclusaoChaveIn, Modo, TrocaChaveIn
 
 router = APIRouter(prefix="/api", tags=["chaves"])
 
 MAX_USUARIOS_POR_BUSCA = 50
+VALIDADE_DESAFIO = timedelta(seconds=60)
 
 
 @router.get("/keys", response_model=DiretorioOut)
@@ -62,6 +66,71 @@ def chave_por_id(key_id: str, eu: Client = Depends(usuario_atual), db: Session =
 def minhas_chaves(eu: Client = Depends(usuario_atual), db: Session = Depends(get_db)) -> list[ChavePublicaOut]:
     registros = db.scalars(select(PublicKey).where(PublicKey.client_id == eu.id).order_by(PublicKey.criada_em)).all()
     return [chaves.para_saida(r) for r in registros]
+
+
+# ---------------------------------------------------------------- troca (fluxo 5.4)
+
+
+@router.post("/keys/challenge", response_model=DesafioOut)
+def desafio(eu: Client = Depends(usuario_atual), db: Session = Depends(get_db)) -> DesafioOut:
+    registro = KeyChallenge(nonce=secrets.token_hex(16), client_id=eu.id, expira_em=agora() + VALIDADE_DESAFIO)
+    db.add(registro)
+    db.commit()
+    return DesafioOut(nonce=registro.nonce, expira_em=registro.expira_em)
+
+
+@router.put("/me/key", response_model=ChavePublicaOut)
+async def trocar_chave(
+    dados: TrocaChaveIn, request: Request, eu: Client = Depends(usuario_atual), db: Session = Depends(get_db)
+) -> ChavePublicaOut:
+    """Publica uma nova chave no modo. A antiga (se houver) vira `substituida` e os contatos são avisados.
+
+    Também serve para voltar a ter chave depois de uma exclusão.
+    """
+    desafio = db.get(KeyChallenge, dados.nonce)
+    if desafio is None or desafio.client_id != eu.id or desafio.usado or desafio.expira_em < agora():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "desafio inválido, expirado ou já usado")
+    desafio.usado = True
+    db.commit()  # queima o nonce mesmo que o resto falhe: não há segunda tentativa com ele
+
+    nova = chaves.validar_publica(dados.modo, dados.public_key)
+    chaves.conferir_prova(nova, dados.prova, "troca", eu.username, dados.nonce)
+
+    antiga = chaves.chave_ativa(db, eu.id, dados.modo)
+    if antiga is not None:
+        antiga.status, antiga.substituida_em = "substituida", agora()
+        db.add(KeyEvent(client_id=eu.id, tipo="substituida", key_id=antiga.key_id, fingerprint=antiga.fingerprint))
+        db.flush()
+    registro = chaves.publicar(db, eu, nova)
+    db.commit()
+
+    saida = chaves.para_saida(registro)
+    aviso = {"type": "key_changed", "user": eu.username, "modo": dados.modo, "key_id": saida.key_id, "fingerprint": saida.fingerprint}
+    for client_id in chaves.interessados(db, eu):
+        await request.app.state.relay.enviar(client_id, aviso)
+    return saida
+
+
+# ---------------------------------------------------------------- exclusão (fluxo 5.5)
+
+
+@router.post("/me/key/revoke", status_code=status.HTTP_204_NO_CONTENT)
+async def excluir_chave(
+    dados: ExclusaoChaveIn, request: Request, eu: Client = Depends(usuario_atual), db: Session = Depends(get_db)
+) -> None:
+    """Revoga a chave ativa do modo: ninguém mais consegue cifrar para este usuário até ele publicar outra."""
+    if not verificar_senha(eu.senha_hash, dados.senha):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "senha incorreta")
+    ativa = chaves.chave_ativa(db, eu.id, dados.modo)
+    if ativa is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"nenhuma chave ativa no modo {dados.modo}")
+    ativa.status, ativa.substituida_em = "revogada", agora()
+    db.add(KeyEvent(client_id=eu.id, tipo="revogada", key_id=ativa.key_id, fingerprint=ativa.fingerprint))
+    db.commit()
+
+    aviso = {"type": "key_revoked", "user": eu.username, "modo": dados.modo, "key_id": ativa.key_id}
+    for client_id in chaves.interessados(db, eu):
+        await request.app.state.relay.enviar(client_id, aviso)
 
 
 def _registrar_acesso(db: Session, client_id: int, registro: PublicKey) -> None:

@@ -93,6 +93,36 @@ class Keystore:
         ativas = set(indice["ativas"].values())
         return [{"key_id": k, **info, "ativa": k in ativas} for k, info in indice["chaves"].items()]
 
+    def ativar(self, key_id: str) -> None:
+        indice = self._ler_indice()
+        info = indice["chaves"].get(key_id)
+        if info is None:
+            raise ChaveNaoEncontrada(key_id)
+        indice["ativas"][info["modo"]] = key_id
+        self._gravar_indice(indice)
+
+    def desativar(self, modo: Modo) -> None:
+        """Depois de uma exclusão: a privada continua guardada (lê o histórico), mas não assina mais."""
+        indice = self._ler_indice()
+        indice["ativas"].pop(modo, None)
+        self._gravar_indice(indice)
+
+    def apagar_modo(self, modo: Modo) -> None:
+        for key_id, info in list(self._ler_indice()["chaves"].items()):
+            if info["modo"] == modo:
+                self.apagar(key_id)
+
+    # ------------------------------------------------------------ fingerprints dos contatos
+
+    def contatos(self) -> dict[tuple[str, str], str]:
+        """Último fingerprint visto de cada (contato, modo): detecta troca mesmo entre sessões."""
+        return {tuple(k.split("|", 1)): fp for k, fp in self._ler_indice().get("contatos", {}).items()}
+
+    def lembrar_contato(self, username: str, modo: str, fingerprint: str) -> None:
+        indice = self._ler_indice()
+        indice.setdefault("contatos", {})[f"{username}|{modo}"] = fingerprint
+        self._gravar_indice(indice)
+
     def apagar(self, key_id: str) -> None:
         """Simulação "apagar privada": as mensagens cifradas para esta chave ficam ilegíveis."""
         indice = self._ler_indice()

@@ -10,12 +10,15 @@ from shared.schemas import (
     ChavePublicaOut,
     ConversaIn,
     ConversaOut,
+    DesafioOut,
     DiretorioOut,
     Envelope,
+    ExclusaoChaveIn,
     Modo,
     RegistroIn,
     RegistroOut,
     TokenOut,
+    TrocaChaveIn,
     UsuarioOut,
 )
 
@@ -84,6 +87,15 @@ class ApiCliente:
 
     async def chave_por_id(self, key_id: str) -> ChavePublicaOut:
         return ChavePublicaOut.model_validate(await self._req("GET", f"/api/keys/id/{key_id}"))
+
+    async def desafio(self) -> DesafioOut:
+        return DesafioOut.model_validate(await self._req("POST", "/api/keys/challenge"))
+
+    async def trocar_chave(self, dados: TrocaChaveIn) -> ChavePublicaOut:
+        return ChavePublicaOut.model_validate(await self._req("PUT", "/api/me/key", json=dados.model_dump()))
+
+    async def excluir_chave(self, dados: ExclusaoChaveIn) -> None:
+        await self._req("POST", "/api/me/key/revoke", json=dados.model_dump())
 
     # ------------------------------------------------------------ conversas
 

@@ -7,6 +7,11 @@ from abc import ABC, abstractmethod
 from functools import cached_property
 
 
+def formatar_fingerprint(fingerprint: str) -> str:
+    """Ex.: A1:9F:03:C2:… (16 primeiros bytes de um SHA-256 em hexadecimal)."""
+    return ":".join(fingerprint[i : i + 2] for i in range(0, 32, 2)).upper()
+
+
 class IdentidadeChave(ABC):
     @abstractmethod
     def bytes_canonicos(self) -> bytes:
@@ -23,8 +28,7 @@ class IdentidadeChave(ABC):
 
     @property
     def fingerprint_formatado(self) -> str:
-        """Ex.: A1:9F:03:C2:… (16 primeiros bytes)."""
-        return ":".join(self.fingerprint[i : i + 2] for i in range(0, 32, 2)).upper()
+        return formatar_fingerprint(self.fingerprint)
 
     @property
     def numero_seguranca(self) -> str:

@@ -80,6 +80,26 @@ class DiretorioOut(BaseModel):
     sem_chave: list[str] = Field(description="usuários inexistentes ou sem chave ativa nesse modo")
 
 
+# ---------------------------------------------------------------- troca e exclusão (fluxos 5.4 e 5.5)
+
+
+class DesafioOut(BaseModel):
+    nonce: str
+    expira_em: datetime
+
+
+class TrocaChaveIn(BaseModel):
+    modo: Modo
+    public_key: str
+    nonce: str
+    prova: str = Field(description="base64 da assinatura de mensagem_prova('troca', username, key_id, nonce) com a NOVA privada")
+
+
+class ExclusaoChaveIn(BaseModel):
+    modo: Modo
+    senha: str = Field(description="reautenticação: um token roubado não basta para excluir a chave")
+
+
 # ---------------------------------------------------------------- conversas
 
 

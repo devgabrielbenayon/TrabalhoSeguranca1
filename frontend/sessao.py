@@ -19,7 +19,7 @@ from shared.crypto import rsa_didatico, rsa_real
 from shared.crypto.chaves import ChavePrivada
 from shared.crypto.prova import mensagem_prova
 from shared.crypto.rsa_didatico import GeracaoDidatica
-from shared.schemas import ChavePublicaIn, RegistroIn, RegistroOut, UsuarioOut
+from shared.schemas import ChavePublicaIn, ChavePublicaOut, ExclusaoChaveIn, Modo, RegistroIn, RegistroOut, TrocaChaveIn, UsuarioOut
 from shared.trace import Tracer
 
 RAIZ_KEYSTORE = Path(os.environ.get("CRIPTOCHAT_KEYSTORE", "data/keystore"))
@@ -77,6 +77,42 @@ class Sessao:
         self.keystore = Keystore(self.raiz_keystore, username, senha)
         self.tracer.ator = username
         return self.keystore.existe()
+
+    async def trocar_chave(self, modo: Modo, bits_didatico: int | None = None) -> tuple[ChavePublicaOut, GeracaoDidatica | None]:
+        """Fluxo 5.4: novo par, desafio do servidor assinado com a NOVA privada, antiga fica no keystore."""
+        username = self.usuario.username
+        geracao = None
+        with self.tracer.etapa("geracao_chaves", entrada={"modo": modo, "motivo": "troca"}) as ev:
+            if modo == "didatico":
+                atual = self.keystore.ativa("didatico")
+                bits = bits_didatico or (atual.n.bit_length() if atual else 32)
+                geracao = rsa_didatico.gerar_parametros(bits)
+                privada: ChavePrivada = geracao.privada()
+                ev.detalhes = asdict(geracao)
+            else:
+                privada = await asyncio.to_thread(rsa_real.gerar)
+            ev.saida = {"key_id": privada.publica.key_id}
+
+        # guarda antes de publicar: se a resposta se perder, a privada nova não se perde junto
+        self.keystore.guardar(privada, ativa=False)
+        desafio = await self.api.desafio()
+        with self.tracer.etapa("prova_de_posse", entrada={"nonce": desafio.nonce, "key_id": privada.publica.key_id}) as ev:
+            assinatura = privada.assinar(mensagem_prova("troca", username, privada.publica.key_id, desafio.nonce))
+            prova = ev.saida = base64.b64encode(assinatura).decode("ascii")
+        saida = await self.api.trocar_chave(
+            TrocaChaveIn(modo=modo, public_key=privada.publica.exportar(), nonce=desafio.nonce, prova=prova)
+        )
+        self.keystore.ativar(privada.publica.key_id)
+        return saida, geracao
+
+    async def excluir_chave(self, modo: Modo, senha: str, apagar_privadas: bool = False) -> None:
+        """Fluxo 5.5: o servidor revoga a chave. Localmente, a privada deixa de ser a ativa —
+        ou é apagada, e aí as mensagens antigas desse modo ficam ilegíveis para sempre."""
+        await self.api.excluir_chave(ExclusaoChaveIn(modo=modo, senha=senha))
+        if apagar_privadas:
+            self.keystore.apagar_modo(modo)
+        else:
+            self.keystore.desativar(modo)
 
     async def sair(self) -> None:
         for acao in self.ao_sair:

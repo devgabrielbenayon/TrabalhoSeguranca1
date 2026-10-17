@@ -251,7 +251,7 @@ sequenceDiagram
     participant S as Servidor
     participant DB as Banco de dados
     participant B as Contatos de A
-    A->>S: DELETE /api/me/key {senha} (token)
+    A->>S: POST /api/me/key/revoke {modo, senha} (token)
     S->>DB: Chave de A → revogada
     S->>B: WS key_revoked {user: A}
     Note over B: Remove do cache<br/>Conversa marcada "A sem chave ativa"
@@ -354,7 +354,7 @@ Cada usuário tem **uma chave ativa por modo**. A conversa define o modo, e o cl
 | GET | `/api/keys?users=bob,carol&modo=real` | token | Chaves ativas de 1 ou N usuários (registra `KeyAccess`) |
 | POST | `/api/keys/challenge` | token | Gera nonce para a troca |
 | PUT | `/api/me/key` | token | Troca de chave (nova pública + nonce assinado) |
-| DELETE | `/api/me/key` | token + senha | Exclusão (revoga a chave ativa) |
+| POST | `/api/me/key/revoke` | token + senha | Exclusão (revoga a chave ativa do modo) |
 | GET | `/api/me/keys` | token | Histórico das próprias chaves (`key_id`, status) |
 | GET | `/api/clients` · GET/PUT/DELETE `/api/clients/{id}` | token (admin para editar/remover outros) | CRUD de clientes |
 | GET/POST | `/api/servers` · GET/PUT/DELETE `/api/servers/{id}` | admin | CRUD de servidores |

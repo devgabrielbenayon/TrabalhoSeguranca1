@@ -64,6 +64,17 @@ class Sessao(Base):
     expira_em: Mapped[datetime] = mapped_column(DateTime)
 
 
+class KeyChallenge(Base):
+    """Nonce de uso único para a troca de chave (prova de posse da nova privada)."""
+
+    __tablename__ = "key_challenges"
+
+    nonce: Mapped[str] = mapped_column(String(32), primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
+    expira_em: Mapped[datetime] = mapped_column(DateTime)
+    usado: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class KeyAccess(Base):
     """Quem buscou a chave de quem: define quem é avisado na troca ou exclusão."""
 

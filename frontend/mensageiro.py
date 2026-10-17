@@ -12,6 +12,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable, Literal
 
 from websockets.asyncio.client import ClientConnection, connect
@@ -20,6 +21,7 @@ from websockets.exceptions import ConnectionClosed
 from frontend.key_cache import CacheChaves, ChaveSuspeita, SemChave
 from frontend.keystore import ChaveNaoEncontrada
 from frontend.sessao import Sessao
+from shared.crypto.base import formatar_fingerprint
 from shared.crypto.envelope import ErroEnvelope, abrir_envelope, montar_envelopes
 from shared.schemas import ChavePublicaOut, ConversaOut, Envelope, Modo
 
@@ -27,7 +29,8 @@ log = logging.getLogger(__name__)
 
 TEMPO_RESPOSTA = 15.0
 
-StatusMensagem = Literal["enviando", "enviada", "entregue", "verificada", "rejeitada", "erro"]
+StatusMensagem = Literal["enviando", "enviada", "entregue", "verificada", "rejeitada", "erro", "aviso"]
+REMETENTE_SISTEMA = "sistema"  # avisos locais (troca/exclusão de chave), não vêm de ninguém
 
 
 class ErroEnvio(Exception):
@@ -88,6 +91,8 @@ class Mensageiro:
         """Carrega conversas e histórico, depois abre o WebSocket (que entrega a fila offline)."""
         if self.conectado:
             return
+        self.cache.conhecidas = self.sessao.keystore.contatos() if self.sessao.keystore else {}
+        self.cache.ao_mudar = self._chave_mudou
         for conversa in await self.sessao.api.conversas():
             self._adicionar_conversa(conversa)
         for conversa in list(self.conversas.values()):
@@ -206,6 +211,18 @@ class Mensageiro:
             self._marcar_entregue(dados["message_id"], dados["to"])
         elif tipo == "conversation":
             self._adicionar_conversa(ConversaOut.model_validate(dados["conversation"]))
+        elif tipo == "key_changed" and dados["user"] != self.eu:
+            # descarta a chave antiga do cache; a nova é buscada (e conferida) no próximo envio
+            self.cache.invalidar(dados["user"])
+            self.cache.registrar_fingerprint(dados["user"], dados["modo"], dados["fingerprint"])
+        elif tipo == "key_revoked" and dados["user"] != self.eu:
+            self.cache.invalidar(dados["user"])
+            self._avisar(
+                dados["user"],
+                dados["modo"],
+                f"⛔ {dados['user']} excluiu a chave ({dados['modo']}). Não é possível enviar mensagens "
+                "até que publique uma nova.",
+            )
         elif tipo == "error":
             log.warning("erro do servidor: %s", dados)
 
@@ -255,6 +272,27 @@ class Mensageiro:
                 if not item.aguardando and item.status == "enviada":
                     item.status = "entregue"
                 self._mudou()
+
+    # ------------------------------------------------------------ troca e exclusão de chave dos contatos
+
+    def _chave_mudou(self, username: str, modo: str, anterior: str | None, novo: str) -> None:
+        if self.sessao.keystore is not None:
+            self.sessao.keystore.lembrar_contato(username, modo, novo)
+        if anterior is not None and username != self.eu:
+            self._avisar(
+                username,
+                modo,
+                f"⚠ A chave de {username} mudou ({modo}). Novo fingerprint: {formatar_fingerprint(novo)}. "
+                "Se não esperava por isso, confirme o número de segurança com a pessoa.",
+            )
+
+    def _avisar(self, username: str, modo: str, texto: str) -> None:
+        agora = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        for conversa in self.conversas.values():
+            if username in conversa.participantes and conversa.modo == modo:
+                aviso_id = f"aviso-{uuid.uuid4().hex}"
+                conversa.mensagens[aviso_id] = ItemMensagem(aviso_id, REMETENTE_SISTEMA, texto, agora, "aviso", propria=False)
+        self._mudou()
 
     def _mudou(self) -> None:
         self.versao += 1

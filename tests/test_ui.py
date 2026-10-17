@@ -56,3 +56,26 @@ async def test_cadastro_e_conversa_pela_interface(servidor, tmp_path, monkeypatc
     finally:
         await bob.desconectar()
         await bob.sessao.api.fechar()
+
+
+async def test_trocar_e_excluir_chave_pela_interface(servidor, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRIPTOCHAT_API", servidor["http"])
+    monkeypatch.setenv("CRIPTOCHAT_KEYSTORE", str(tmp_path / "aparelho-alice"))
+
+    async with user_simulation(main_file=MAIN) as alice:
+        await alice.open("/cadastro")
+        alice.find(marker="cadastro-usuario").type("alice")
+        alice.find(marker="cadastro-nome").type("Alice")
+        alice.find(marker="cadastro-senha").type("segredo123")
+        alice.find(marker="cadastro-enviar").click()
+        await alice.should_see("Geração da chave didática", retries=100)
+
+        await alice.open("/")
+        alice.find(marker="trocar-real").click()
+        await alice.should_see("substituida · privada neste aparelho", retries=100)
+
+        alice.find(marker="excluir-didatico").click()
+        alice.find(marker="excluir-senha").type("segredo123")
+        alice.find(marker="excluir-confirmar").click()
+        await alice.should_see("revogada · privada neste aparelho", retries=50)
+        await alice.should_see("Publicar nova chave", retries=50)
