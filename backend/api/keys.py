@@ -106,8 +106,13 @@ async def trocar_chave(
 
     saida = chaves.para_saida(registro)
     aviso = {"type": "key_changed", "user": eu.username, "modo": dados.modo, "key_id": saida.key_id, "fingerprint": saida.fingerprint}
-    for client_id in chaves.interessados(db, eu):
+    avisados = chaves.interessados(db, eu)
+    for client_id in avisados:
         await request.app.state.relay.enviar(client_id, aviso)
+    await request.app.state.observador.publicar({
+        "type": "chave", "evento": "trocada", "usuario": eu.username, "modo": dados.modo,
+        "key_id": saida.key_id, "antiga": antiga.key_id if antiga else None, "avisados": len(avisados),
+    })
     return saida
 
 
@@ -129,8 +134,13 @@ async def excluir_chave(
     db.commit()
 
     aviso = {"type": "key_revoked", "user": eu.username, "modo": dados.modo, "key_id": ativa.key_id}
-    for client_id in chaves.interessados(db, eu):
+    avisados = chaves.interessados(db, eu)
+    for client_id in avisados:
         await request.app.state.relay.enviar(client_id, aviso)
+    await request.app.state.observador.publicar({
+        "type": "chave", "evento": "revogada", "usuario": eu.username, "modo": dados.modo,
+        "key_id": ativa.key_id, "avisados": len(avisados),
+    })
 
 
 def _registrar_acesso(db: Session, client_id: int, registro: PublicKey) -> None:

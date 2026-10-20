@@ -72,3 +72,10 @@ def usuario_atual(token: str = Depends(token_da_requisicao), db: Session = Depen
     if cliente is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token inválido ou expirado", headers={"WWW-Authenticate": "Bearer"})
     return cliente
+
+
+def admin_atual(cliente: Client = Depends(usuario_atual)) -> Client:
+    """CRUD de servidores, remoção de outros clientes e Observador: só administradores."""
+    if not cliente.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "apenas administradores")
+    return cliente

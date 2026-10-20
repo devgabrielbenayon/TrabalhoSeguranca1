@@ -119,7 +119,7 @@ def test_a_para_b_online(api, alice, bob):
         recebido = ws_b.receive_json()
         assert recebido["type"] == "message"
         assert recebido["envelope"]["to"] == "bob" and recebido["envelope"]["from"] == "alice"
-        assert ws_a.receive_json() == {"type": "sent", "message_id": envio["message_id"], "offline": []}
+        assert ws_a.receive_json() == {"type": "sent", "message_id": envio["message_id"], "offline": [], "sem_rota": []}
 
         ws_b.send_json({"type": "ack", "message_id": envio["message_id"]})
         assert ws_a.receive_json() == {"type": "delivered", "message_id": envio["message_id"], "to": "bob"}

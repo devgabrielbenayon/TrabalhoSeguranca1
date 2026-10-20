@@ -152,7 +152,7 @@ def gerar_parametros(
 # ---------------------------------------------------------------- chaves
 
 
-def _hash_mod_n(dados: bytes, n: int) -> int:
+def hash_mod_n(dados: bytes, n: int) -> int:
     # n pequeno trunca o hash: limitação proposital do modo didático
     return int.from_bytes(hashlib.sha256(dados).digest(), "big") % n
 
@@ -195,7 +195,7 @@ class PublicaDidatica(IdentidadeChave):
         s = int.from_bytes(assinatura, "big")
         if s >= self.n:
             return False
-        return pow_mod_trace(s, self.e, self.n, passos) == _hash_mod_n(dados, self.n)
+        return pow_mod_trace(s, self.e, self.n, passos) == hash_mod_n(dados, self.n)
 
 
 class PrivadaDidatica:
@@ -221,7 +221,7 @@ class PrivadaDidatica:
         return (m % (1 << (8 * tamanho))).to_bytes(tamanho, "big")
 
     def assinar(self, dados: bytes, passos: list[dict] | None = None) -> bytes:
-        s = pow_mod_trace(_hash_mod_n(dados, self.n), self.d, self.n, passos)
+        s = pow_mod_trace(hash_mod_n(dados, self.n), self.d, self.n, passos)
         return s.to_bytes(self.publica.tamanho_cifrado, "big")
 
     def exportar(self) -> str:

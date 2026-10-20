@@ -70,7 +70,7 @@ async def test_trocar_e_excluir_chave_pela_interface(servidor, tmp_path, monkeyp
         alice.find(marker="cadastro-enviar").click()
         await alice.should_see("Geração da chave didática", retries=100)
 
-        await alice.open("/")
+        await alice.open("/chaves")
         alice.find(marker="trocar-real").click()
         await alice.should_see("substituida · privada neste aparelho", retries=100)
 

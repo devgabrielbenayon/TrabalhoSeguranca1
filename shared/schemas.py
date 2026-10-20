@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -165,3 +165,104 @@ class AckWS(BaseModel):
 
     type: Literal["ack"]
     message_id: str = Field(pattern=MESSAGE_ID_REGEX)
+
+
+# ---------------------------------------------------------------- CRUD de clientes (RF12)
+
+
+class ClienteOut(BaseModel):
+    id: int
+    username: str
+    nome: str
+    avatar: str | None = None
+    is_admin: bool
+    ativo: bool
+    criado_em: datetime
+    server_id: int | None
+    servidor: str | None = Field(description="nome do nó onde o cliente está")
+    modos_ativos: list[Modo] = Field(description="modos em que o cliente tem chave pública ativa")
+    online: bool
+
+
+class ClienteEdicaoIn(BaseModel):
+    """Campos omitidos não mudam. O próprio usuário edita nome e avatar; nó, papel e reativação são do administrador."""
+
+    nome: str | None = Field(default=None, min_length=1, max_length=80)
+    avatar: str | None = Field(default=None, max_length=200, description="emoji, iniciais ou URL de imagem")
+    server_id: int | None = None
+    is_admin: bool | None = None
+    ativo: Literal[True] | None = Field(default=None, description="só reativa; para remover use DELETE")
+
+
+class RemocaoClienteIn(BaseModel):
+    senha: str | None = Field(default=None, description="obrigatória para remover a própria conta")
+
+
+# ---------------------------------------------------------------- CRUD de servidores/nós (RF13)
+
+
+class ServidorIn(BaseModel):
+    nome: str = Field(min_length=1, max_length=80)
+    host: str = Field(default="127.0.0.1", min_length=1, max_length=120)
+    porta: int = Field(default=8000, ge=1, le=65535)
+    regiao: str = Field(default="", max_length=60)
+    capacidade: int = Field(default=100, ge=1, le=100_000)
+    ativo: bool = True
+    vizinhos: list[int] = Field(default_factory=list, max_length=100, description="ids dos nós ligados a este")
+
+
+class ServidorOut(BaseModel):
+    id: int
+    nome: str
+    host: str
+    porta: int
+    regiao: str
+    capacidade: int
+    ativo: bool
+    vizinhos: list[int]
+    clientes: list[str]
+
+
+class StatusServidorIn(BaseModel):
+    ativo: bool
+
+
+class ClienteTopologia(BaseModel):
+    username: str
+    server_id: int | None
+    online: bool
+
+
+class TopologiaOut(BaseModel):
+    nos: list[ServidorOut]
+    clientes: list[ClienteTopologia]
+
+
+# ---------------------------------------------------------------- painéis (Dashboard, Inspetor, Observador)
+
+
+class EventoTransitoOut(BaseModel):
+    """TraceEvent do servidor (GET /api/trace/{message_id}): só o que ele enxerga em trânsito."""
+
+    etapa: str
+    ator: str
+    entrada: Any = None
+    saida: Any = None
+    duracao_ms: float
+    ts: datetime
+
+
+class EstatisticasOut(BaseModel):
+    clientes: int
+    online: int
+    servidores: int
+    servidores_ativos: int
+    conversas: int
+    mensagens: int
+    envelopes_pendentes: int
+    minhas_conversas: int
+    minhas_mensagens: int
+
+
+class AdulteracaoIn(BaseModel):
+    ativo: bool = Field(description="o relay altera um bloco do próximo envelope (demonstração de assinatura inválida)")

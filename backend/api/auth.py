@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend import chaves
+from backend import chaves, nos
 from backend.auth import emitir_token, hash_senha, revogar_token, token_da_requisicao, usuario_atual, verificar_senha
 from backend.db import get_db
 from backend.models import Client
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api", tags=["autenticação"])
 
 
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED, response_model=RegistroOut)
-def registrar(dados: RegistroIn, db: Session = Depends(get_db)) -> RegistroOut:
+def registrar(dados: RegistroIn, request: Request, tarefas: BackgroundTasks, db: Session = Depends(get_db)) -> RegistroOut:
     if db.scalar(select(Client).where(Client.username == dados.username)) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "nome de usuário já existe")
 
@@ -37,13 +37,17 @@ def registrar(dados: RegistroIn, db: Session = Depends(get_db)) -> RegistroOut:
     db.add(cliente)
     db.flush()
     registros = [chaves.publicar(db, cliente, publica) for publica in publicas]
+    nos.realocar(db)  # entra no nó ligado menos ocupado
     db.commit()
+
+    estado = request.app.state
+    tarefas.add_task(estado.observador.publicar, {"type": "topologia", **nos.topologia(db, estado.relay.conectados()).model_dump()})
     return RegistroOut(usuario=UsuarioOut.model_validate(cliente), chaves=[chaves.para_saida(r) for r in registros])
 
 
 @router.post("/auth/login", response_model=TokenOut)
 def login(dados: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
-    cliente = db.scalar(select(Client).where(Client.username == dados.username.lower()))
+    cliente = db.scalar(select(Client).where(Client.username == dados.username.strip().lower()))
     # mesma resposta para usuário inexistente e senha errada: não revela quem existe
     if cliente is None or not cliente.ativo or not verificar_senha(cliente.senha_hash, dados.senha):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "usuário ou senha incorretos")

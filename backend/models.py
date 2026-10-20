@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db import Base, agora
 
 
 class Server(Base):
+    """Nó lógico de retransmissão (RF13). O nome é único: é ele que aparece nos saltos."""
+
     __tablename__ = "servers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -20,6 +22,15 @@ class Server(Base):
     regiao: Mapped[str] = mapped_column(String(60), default="")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
     capacidade: Mapped[int] = mapped_column(Integer, default=100)
+
+
+class ServerLink(Base):
+    """Ligação entre dois nós, sem direção (guardada com a_id < b_id): por onde um envelope pode passar."""
+
+    __tablename__ = "server_links"
+
+    a_id: Mapped[int] = mapped_column(ForeignKey("servers.id"), primary_key=True)
+    b_id: Mapped[int] = mapped_column(ForeignKey("servers.id"), primary_key=True)
 
 
 class Client(Base):
@@ -36,6 +47,7 @@ class Client(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime, default=agora)
 
     chaves: Mapped[list[PublicKey]] = relationship(back_populates="dono")
+    servidor: Mapped[Server | None] = relationship()
 
 
 class PublicKey(Base):
@@ -133,6 +145,7 @@ class EnvelopeRegistro(Base):
     conteudo: Mapped[str] = mapped_column(Text)  # o envelope em JSON, exatamente como o remetente assinou
     status: Mapped[str] = mapped_column(String(10), default="pendente")  # pendente / entregue
     entregue_em: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    hops: Mapped[str] = mapped_column(Text, default="[]")  # nomes dos nós do último caminho calculado
 
 
 class KeyEvent(Base):
@@ -145,4 +158,19 @@ class KeyEvent(Base):
     tipo: Mapped[str] = mapped_column(String(12))
     key_id: Mapped[str] = mapped_column(String(20))
     fingerprint: Mapped[str] = mapped_column(String(64))
+    ts: Mapped[datetime] = mapped_column(DateTime, default=agora)
+
+
+class TraceRegistro(Base):
+    """TraceEvent do servidor: só eventos de trânsito, com o que ele enxerga (nunca texto claro)."""
+
+    __tablename__ = "trace_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[str | None] = mapped_column(String(32), index=True, default=None)
+    etapa: Mapped[str] = mapped_column(String(20))  # recebido / salto / entregue / fila / confirmado
+    ator: Mapped[str] = mapped_column(String(80))  # nome do nó (ou "relay" sem nós cadastrados)
+    entrada: Mapped[str] = mapped_column(Text, default="null")  # JSON
+    saida: Mapped[str] = mapped_column(Text, default="null")  # JSON
+    duracao_ms: Mapped[float] = mapped_column(Float, default=0.0)
     ts: Mapped[datetime] = mapped_column(DateTime, default=agora)

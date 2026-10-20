@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from shared.crypto.blocos import codificar_conteudo, decodificar_conteudo, dividir, juntar
 from shared.crypto.chaves import ChavePrivada, ChavePublica
+from shared.crypto.rsa_didatico import hash_mod_n
 from shared.schemas import Envelope
 from shared.trace import SEM_RASTREIO, Tracer
 
@@ -44,6 +45,13 @@ class MensagemAberta:
 
 def _b64(dados: bytes) -> str:
     return base64.b64encode(dados).decode("ascii")
+
+
+def _numeros(publica: ChavePublica) -> dict:
+    """Números públicos da chave para o rastro: e e n no didático; no real, n tem 617 dígitos e basta o tamanho."""
+    if publica.modo == "didatico":
+        return {"e": publica.e, "n": publica.n}
+    return {"e": publica.numeros["e"], "bits_n": publica.numeros["n"].bit_length()}
 
 
 def _de_b64(texto: str) -> bytes:
@@ -97,7 +105,7 @@ def montar_envelopes(
                         "passos": passos,
                     })
             ev.saida = [_b64(c) for c in cifrados]
-            ev.detalhes = {"modo": modo, "tamanho_bloco": publica.tamanho_bloco, "blocos": detalhes}
+            ev.detalhes = {"modo": modo, "tamanho_bloco": publica.tamanho_bloco, "blocos": detalhes, **_numeros(publica)}
 
         envelope = Envelope(
             message_id=message_id,
@@ -113,9 +121,12 @@ def montar_envelopes(
 
         with tracer.etapa("assinatura", entrada={"para": usuario}, message_id=message_id) as ev:
             passos = [] if tracer.ativo and modo == "didatico" else None
-            envelope.signature = _b64(privada.assinar(envelope.dados_assinados(), passos))
+            dados = envelope.dados_assinados()
+            envelope.signature = _b64(privada.assinar(dados, passos))
             ev.saida = envelope.signature
-            ev.detalhes = {"passos": passos}
+            ev.detalhes = {"passos": passos, "dados_assinados": dados.decode("utf-8"), **_numeros(privada.publica)}
+            if tracer.ativo and modo == "didatico":  # s = H(dados)^d mod n, para conferir no Inspetor
+                ev.detalhes |= {"h": hash_mod_n(dados, privada.n), "d": privada.d}
 
         envelopes.append(envelope)
     return envelopes
@@ -142,9 +153,12 @@ def abrir_envelope(
             assinatura = _de_b64(envelope.signature)
         except ValueError as erro:
             raise AssinaturaInvalida("assinatura mal formada") from erro
-        valida = publica_remetente.verificar(envelope.dados_assinados(), assinatura, passos)
+        dados_assinados = envelope.dados_assinados()
+        valida = publica_remetente.verificar(dados_assinados, assinatura, passos)
         ev.saida = valida
-        ev.detalhes = {"passos": passos}
+        ev.detalhes = {"passos": passos, **_numeros(publica_remetente)}
+        if tracer.ativo and envelope.mode == "didatico":  # válida quando s^e mod n == H(dados) mod n
+            ev.detalhes |= {"h": hash_mod_n(dados_assinados, publica_remetente.n), "s": int.from_bytes(assinatura, "big")}
         if not valida:
             raise AssinaturaInvalida(f"assinatura de {envelope.from_} não confere")
 
@@ -167,7 +181,9 @@ def abrir_envelope(
             raise ConteudoIlegivel(f"falha ao decifrar: {erro}") from erro
         dados = juntar(blocos, remover_preenchimento=privada.publica.blocos_fixos)
         ev.saida = dados.hex()
-        ev.detalhes = {"blocos": detalhes}
+        ev.detalhes = {"blocos": detalhes, **_numeros(privada.publica)}
+        if envelope.mode == "didatico":  # rastro local: d só aparece no Inspetor deste aparelho
+            ev.detalhes["d"] = privada.d
 
     with tracer.etapa("decodificacao", entrada=dados.hex(), message_id=envelope.message_id) as ev:
         try:
@@ -188,3 +204,12 @@ def abrir_envelope(
         texto=conteudo["text"],
         sent_at=envelope.sent_at,
     )
+
+
+def decifrar_capturado(envelope: Envelope, privada: ChavePrivada) -> dict:
+    """Só decifra, sem verificar nada: o que um interceptador faz depois de quebrar a chave do destinatário."""
+    try:
+        blocos = [privada.decifrar_bloco(_de_b64(b)) for b in envelope.blocks]
+        return decodificar_conteudo(juntar(blocos, remover_preenchimento=privada.publica.blocos_fixos))
+    except ValueError as erro:
+        raise ConteudoIlegivel(f"falha ao decifrar: {erro}") from erro

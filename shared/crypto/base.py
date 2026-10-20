@@ -12,6 +12,12 @@ def formatar_fingerprint(fingerprint: str) -> str:
     return ":".join(fingerprint[i : i + 2] for i in range(0, 32, 2)).upper()
 
 
+def numero_seguranca(fingerprint: str) -> str:
+    """60 dígitos em 12 blocos de 5, para comparar fora do app (estilo Signal)."""
+    digitos = str(int(fingerprint, 16)).zfill(78)[:60]
+    return " ".join(digitos[i : i + 5] for i in range(0, 60, 5))
+
+
 class IdentidadeChave(ABC):
     @abstractmethod
     def bytes_canonicos(self) -> bytes:
@@ -32,6 +38,4 @@ class IdentidadeChave(ABC):
 
     @property
     def numero_seguranca(self) -> str:
-        """60 dígitos em 12 blocos de 5, para comparar fora do app (estilo Signal)."""
-        digitos = str(int(self.fingerprint, 16)).zfill(78)[:60]
-        return " ".join(digitos[i : i + 5] for i in range(0, 60, 5))
+        return numero_seguranca(self.fingerprint)

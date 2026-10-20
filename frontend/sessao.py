@@ -13,7 +13,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from frontend.api_client import ApiCliente
+import httpx
+
+from frontend.api_client import ApiCliente, ErroApi
 from frontend.keystore import Keystore
 from shared.crypto import rsa_didatico, rsa_real
 from shared.crypto.chaves import ChavePrivada
@@ -37,6 +39,10 @@ class Sessao:
     @property
     def logado(self) -> bool:
         return self.usuario is not None
+
+    @property
+    def admin(self) -> bool:
+        return self.usuario is not None and self.usuario.is_admin
 
     async def cadastrar(self, username: str, nome: str, senha: str, bits_didatico: int = 32) -> tuple[RegistroOut, GeracaoDidatica]:
         """Passo 0: gera os pares (real e didático), publica só as públicas com prova de posse,
@@ -115,11 +121,16 @@ class Sessao:
             self.keystore.desativar(modo)
 
     async def sair(self) -> None:
+        """Sai mesmo com o servidor fora do ar: o estado local é limpo de qualquer jeito."""
         for acao in self.ao_sair:
             await acao()
-        await self.api.logout()
+        try:
+            await self.api.logout()
+        except (ErroApi, httpx.HTTPError):
+            self.api.token = None
         self.usuario = None
         self.keystore = None
+        self.tracer.eventos.clear()  # o rastro local tem texto claro: não fica para o próximo usuário
 
     @staticmethod
     def _chave_com_prova(privada: ChavePrivada, username: str) -> ChavePublicaIn:
