@@ -35,7 +35,8 @@ async def test_cadastro_e_conversa_pela_interface(servidor, tmp_path, monkeypatc
 
             await alice.open("/chat")
             alice.find(marker="chat-nova").click()
-            alice.find(marker="chat-participantes").type("bob")
+            await alice.should_see("Bob")  # a lista de pessoas mostra o nome e o @usuário
+            alice.find(marker="chat-contato-bob").click()
             alice.find(marker="chat-criar").click()
             await alice.should_see("Criptografia ponta a ponta", retries=50)
 

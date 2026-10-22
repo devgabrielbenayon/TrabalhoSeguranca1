@@ -33,7 +33,7 @@ from shared.crypto.chaves import carregar_publica
 from shared.schemas import ChavePublicaOut
 
 NOME_STATUS = {"ativa": "ativa", "substituida": "substituída", "revogada": "revogada", "local": "não publicada"}
-TOM_STATUS = {"ativa": "verde", "substituida": "cinza", "revogada": "vermelho", "local": "ambar"}
+TOM_STATUS = {"ativa": "ok", "substituida": "neutro", "revogada": "erro", "local": "alerta"}
 DESCRICAO_MODO = {"real": "RSA 2048 bits · OAEP + PSS", "didatico": "RSA de livro, com números pequenos e legíveis"}
 
 
@@ -67,51 +67,51 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 def _mapa(publicadas: list[ChavePublicaOut], locais: dict[str, dict], contatos: dict[tuple[str, str], str]) -> None:
     with secao("Onde cada chave fica", "account_tree", "Você gera o par aqui; só a metade pública viaja."):
         with ui.row().classes("w-full items-stretch gap-2 no-wrap max-xl:flex-wrap"):
-            with _lugar("Este aparelho", "smartphone", "teal", "Privadas: decifram o que chega e assinam o que você envia."):
+            with _lugar("Este aparelho", "smartphone", "marca", "Privadas: decifram o que chega e assinam o que você envia."):
                 if not locais:
-                    ui.label("nenhuma chave privada").classes("text-sm text-slate-500")
+                    ui.label("nenhuma chave privada").classes("text-sm text-stone-500")
                 for key_id, info in sorted(locais.items(), key=lambda kv: kv[1]["criada_em"], reverse=True):
                     with ui.row().classes("items-center gap-1.5 no-wrap"):
                         ui.icon("vpn_key", color="primary" if info["ativa"] else "grey-5").classes("text-base")
-                        ui.label(key_id).classes("font-mono text-xs " + ("text-slate-800" if info["ativa"] else "text-slate-400"))
+                        ui.label(key_id).classes("font-mono text-xs " + ("text-stone-800" if info["ativa"] else "text-stone-400"))
                         selo_modo(info["modo"])
                         if info["ativa"]:
-                            ui.label("em uso").classes("text-[11px] font-semibold text-emerald-700")
+                            ui.label("em uso").classes("text-[11px] font-semibold txt-ok")
 
             _flecha("sobe só a pública", "com prova de posse")
 
-            with _lugar("Servidor", "dns", "cinza", "Diretório de públicas: entrega a sua chave a quem quer falar com você."):
+            with _lugar("Servidor", "dns", "neutro", "Diretório de públicas: entrega a sua chave a quem quer falar com você."):
                 ativas = [c for c in publicadas if c.status == "ativa"]
                 if not ativas:
-                    ui.label("nenhuma chave ativa").classes("text-sm text-red-700")
+                    ui.label("nenhuma chave ativa").classes("text-sm txt-erro")
                 for chave in ativas:
                     with ui.row().classes("items-center gap-2 no-wrap"):
                         ui.icon("key", color="info").classes("text-base")
-                        ui.label(chave.key_id).classes("font-mono text-xs text-slate-800")
+                        ui.label(chave.key_id).classes("font-mono text-xs text-stone-800")
                         selo_modo(chave.modo)
                 antigas = len(publicadas) - len(ativas)
                 if antigas:
-                    ui.label(f"+ {antigas} antiga(s): substituída(s) ou revogada(s)").classes("text-xs text-slate-500")
+                    ui.label(f"+ {antigas} antiga(s): substituída(s) ou revogada(s)").classes("text-xs text-stone-500")
 
             _flecha("cada um busca a do outro", "e confere o key_id")
 
-            with _lugar("Contatos", "group", "azul", "Este aparelho lembra o fingerprint de cada contato e avisa se ele mudar."):
+            with _lugar("Contatos", "group", "info", "Este aparelho lembra o fingerprint de cada contato e avisa se ele mudar."):
                 if not contatos:
-                    ui.label("ninguém ainda: o fingerprint é guardado na primeira conversa").classes("text-sm text-slate-500")
+                    ui.label("ninguém ainda: o fingerprint é guardado na primeira conversa").classes("text-sm text-stone-500")
                 for (username, modo), fingerprint in sorted(contatos.items()):
                     with ui.row().classes("items-center gap-2 no-wrap"):
                         avatar(username, tamanho=6)
                         ui.label(f"@{username}").classes("text-sm font-medium")
                         selo_modo(modo)
-                        ui.label(formatar_fingerprint(fingerprint)[:11] + "…").classes("font-mono text-[11px] text-slate-400")
+                        ui.label(formatar_fingerprint(fingerprint)[:11] + "…").classes("font-mono text-[11px] text-stone-400")
 
 
 def _lugar(titulo: str, icone: str, tom: str, legenda: str) -> ui.column:
-    with ui.column().classes("grow basis-0 min-w-56 max-xl:w-full gap-2 rounded-2xl p-3 ring-1 ring-slate-200 bg-slate-50"):
+    with ui.column().classes("grow basis-0 min-w-56 max-xl:w-full gap-2 rounded-2xl p-3 ring-1 ring-stone-200 bg-stone-50"):
         with ui.row().classes("items-center gap-2 no-wrap"):
             icone_destaque(icone, tom)
-            ui.label(titulo).classes("font-bold text-slate-800")
-        ui.label(legenda).classes("text-xs text-slate-500")
+            ui.label(titulo).classes("font-bold text-stone-800")
+        ui.label(legenda).classes("text-xs text-stone-500")
         corpo = ui.column().classes("gap-1.5 w-full mt-1")
     return corpo
 
@@ -119,8 +119,8 @@ def _lugar(titulo: str, icone: str, tom: str, legenda: str) -> ui.column:
 def _flecha(texto: str, detalhe: str) -> None:
     with ui.column().classes("items-center justify-center gap-0 px-1 shrink-0 max-xl:w-full max-xl:py-1"):
         ui.icon("arrow_forward", color="grey-5").classes("text-3xl max-xl:rotate-90")
-        ui.label(texto).classes("text-[11px] font-medium text-slate-600 text-center w-20 max-xl:w-auto leading-tight")
-        ui.label(detalhe).classes("text-[10px] text-slate-400 text-center w-20 max-xl:w-auto leading-tight")
+        ui.label(texto).classes("text-[11px] font-medium text-stone-600 text-center w-20 max-xl:w-auto leading-tight")
+        ui.label(detalhe).classes("text-[10px] text-stone-400 text-center w-20 max-xl:w-auto leading-tight")
 
 
 # ---------------------------------------------------------------- o par de cada modo
@@ -140,24 +140,24 @@ def _cartao_modo(sessao: Sessao, modo: str, publicadas: list[ChavePublicaOut], l
         with ui.row().classes("items-center gap-3 no-wrap w-full"):
             icone_destaque(ICONE_MODO[modo], TOM_MODO[modo])
             with ui.column().classes("gap-0 grow"):
-                ui.label(NOME_CHAVE[modo].capitalize()).classes("text-lg font-bold text-slate-800")
-                ui.label(DESCRICAO_MODO[modo]).classes("text-xs text-slate-500")
+                ui.label(NOME_CHAVE[modo].capitalize()).classes("text-lg font-bold text-stone-800")
+                ui.label(DESCRICAO_MODO[modo]).classes("text-xs text-stone-500")
             if ativa is None:
-                pilula("sem chave ativa", "vermelho")
+                pilula("sem chave ativa", "erro")
 
         if ativa is None:
-            with ui.row().classes("items-start gap-2 no-wrap rounded-xl bg-red-50 px-3 py-2"):
+            with ui.row().classes("items-start gap-2 no-wrap rounded-xl fundo-rosa px-3 py-2"):
                 ui.icon("key_off", color="negative").classes("mt-0.5")
                 ui.label("Ninguém consegue cifrar para você neste modo até você publicar uma nova chave.").classes(
-                    "text-sm text-red-800"
+                    "text-sm txt-erro"
                 )
         else:
             publica = carregar_publica(ativa.public_key)
             _par(modo, publica, privada, ativa.key_id in locais)
             with ui.expansion("Número de segurança", icon="pin").classes("w-full text-sm -my-2"):
-                ui.label("Compare com o que seus contatos veem no aparelho deles.").classes("text-xs text-slate-500")
+                ui.label("Compare com o que seus contatos veem no aparelho deles.").classes("text-xs text-stone-500")
                 numero_seguranca(publica.numero_seguranca)
-                ui.label(publica.fingerprint_formatado).classes("font-mono text-[11px] text-slate-400 break-all")
+                ui.label(publica.fingerprint_formatado).classes("font-mono text-[11px] text-stone-400 break-all")
 
         ui.label("Ciclo de vida").classes("rotulo")
         _ciclo(sessao, modo, historico, locais)
@@ -185,12 +185,12 @@ def _cartao_modo(sessao: Sessao, modo: str, publicadas: list[ChavePublicaOut], l
 def _par(modo: str, publica, privada, privada_aqui: bool) -> None:
     """As duas metades lado a lado: o que cada uma faz e onde fica."""
     with ui.row().classes("w-full gap-3 no-wrap max-sm:flex-wrap"):
-        with ui.column().classes(f"grow basis-0 gap-1 rounded-xl p-3 ring-1 {TONS['azul']}"):
+        with ui.column().classes(f"grow basis-0 gap-1 rounded-xl p-3 ring-1 {TONS['info']}"):
             with ui.row().classes("items-center gap-2 no-wrap w-full"):
                 ui.icon("key").classes("text-lg")
                 ui.label("Pública").classes("font-bold")
                 ui.space()
-                pilula("no servidor", "azul", "dns")
+                pilula("no servidor", "info", "dns")
             ui.label("cifra para você · confere a sua assinatura").classes("text-xs")
             if modo == "didatico":
                 ui.label(f"e = {publica.e}").classes("font-mono text-xs")
@@ -199,7 +199,7 @@ def _par(modo: str, publica, privada, privada_aqui: bool) -> None:
                 ui.label(f"e = {publica.numeros['e']}").classes("font-mono text-xs")
                 ui.label(f"n com {publica.numeros['n'].bit_length()} bits").classes("font-mono text-xs")
             ui.label(publica.key_id).classes("font-mono text-[11px] opacity-70")
-        tom = "teal" if privada_aqui else "vermelho"
+        tom = "marca" if privada_aqui else "erro"
         with ui.column().classes(f"grow basis-0 gap-1 rounded-xl p-3 ring-1 {TONS[tom]}"):
             with ui.row().classes("items-center gap-2 no-wrap w-full"):
                 ui.icon("vpn_key").classes("text-lg")
@@ -226,7 +226,7 @@ def _ciclo(sessao: Sessao, modo: str, historico: list[ChavePublicaOut], locais: 
         if info["modo"] == modo and key_id not in publicadas
     ]
     if not itens:
-        ui.label("Nenhuma chave neste modo.").classes("text-sm text-slate-500")
+        ui.label("Nenhuma chave neste modo.").classes("text-sm text-stone-500")
         return
     with ui.row().classes("w-full items-stretch gap-1 flex-wrap"):
         for i, (key_id, status, criada) in enumerate(itens):
@@ -281,7 +281,7 @@ def _dialogo_apagar(sessao: Sessao, key_id: str, ativa: bool) -> None:
             ui.label(
                 "É a chave em uso: o servidor continua com a pública ativa e os contatos seguirão cifrando para ela. "
                 "Troque ou exclua a chave depois."
-            ).classes("text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2")
+            ).classes("text-sm txt-alerta fundo-pessego rounded-lg px-3 py-2")
 
         def confirmar() -> None:
             sessao.keystore.apagar(key_id)
@@ -329,16 +329,16 @@ def _diretorio(sessao: Sessao) -> None:
                 if publica.key_id != chave.key_id:
                     ui.notify(f"A chave de {username} não confere com o key_id anunciado!", type="negative")
                     continue
-                with ui.column().classes("w-full gap-1 rounded-xl ring-1 ring-slate-200 bg-slate-50 p-3"):
+                with ui.column().classes("w-full gap-1 rounded-xl ring-1 ring-stone-200 bg-stone-50 p-3"):
                     with ui.row().classes("items-center gap-2"):
                         avatar(username, tamanho=7)
                         ui.label(f"@{username}").classes("font-bold")
                         selo_modo(chave.modo)
-                        ui.label(chave.key_id).classes("font-mono text-xs text-slate-500")
+                        ui.label(chave.key_id).classes("font-mono text-xs text-stone-500")
                     numero_seguranca(publica.numero_seguranca)
-                    ui.label(publica.fingerprint_formatado).classes("font-mono text-[11px] text-slate-400")
+                    ui.label(publica.fingerprint_formatado).classes("font-mono text-[11px] text-stone-400")
             if diretorio.sem_chave:
-                ui.label(f"Sem chave ativa neste modo: {', '.join(diretorio.sem_chave)}").classes("text-sm text-red-700")
+                ui.label(f"Sem chave ativa neste modo: {', '.join(diretorio.sem_chave)}").classes("text-sm txt-erro")
 
     botao.on_click(buscar)
     usuarios.on("keydown.enter", buscar)

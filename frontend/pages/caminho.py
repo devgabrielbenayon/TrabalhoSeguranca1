@@ -76,8 +76,8 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
             with ui.row().classes("w-full gap-4 no-wrap items-start max-lg:flex-wrap"):
                 with cartao("w-80 shrink-0 max-lg:w-full gap-1 p-3"):
                     with ui.row().classes("w-full items-center no-wrap px-1"):
-                        ui.label("Mensagens").classes("text-base font-bold text-slate-800 grow")
-                        seguir = ui.switch("mais recente", value=estado["seguir"]).props("dense").classes("text-xs text-slate-600")
+                        ui.label("Mensagens").classes("text-base font-bold text-stone-800 grow")
+                        seguir = ui.switch("mais recente", value=estado["seguir"]).props("dense").classes("text-xs text-stone-600")
                         seguir.tooltip("Acompanhar sempre a mensagem mais recente")
                     with ui.scroll_area().style("height: calc(100vh - 250px)").classes("w-full"):
 
@@ -85,7 +85,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                         def lista() -> None:
                             itens = mensagens_com_envelope(mensageiro)
                             if not itens:
-                                ui.label("Nenhuma mensagem ainda.").classes("text-sm text-slate-500 px-1")
+                                ui.label("Nenhuma mensagem ainda.").classes("text-sm text-stone-500 px-1")
                             atual = selecionada()
                             for conversa, item in itens:
                                 item_mensagem(
@@ -101,25 +101,26 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                         @ui.refreshable
                         def topo() -> None:
                             escolha = selecionada()
-                            with ui.row().classes("w-full items-center gap-3 px-4 py-3 border-b border-slate-200"):
+                            with ui.row().classes("w-full items-center gap-3 px-4 py-3 border-b border-stone-200"):
                                 if escolha is None:
-                                    ui.label("Topologia da rede").classes("font-bold text-slate-800")
+                                    ui.label("Topologia da rede").classes("font-bold txt-tinta")
                                     return
                                 conversa, item = escolha
                                 destinos = _destinatarios(conversa, item)
                                 avatar(item.remetente, tamanho=8)
-                                ui.label(f"@{item.remetente}").classes("font-semibold")
+                                ui.label(f"@{item.remetente}").classes("font-semibold txt-tinta")
                                 ui.icon("arrow_forward", color="grey-6")
                                 if len(destinos) > 1:
                                     ui.toggle({p: f"@{p}" for p in destinos}, value=destinatario(conversa, item),
                                               on_change=lambda e: escolher_para(e.value)).props(
-                                        "dense no-caps unelevated toggle-color=primary"
-                                    ).mark("caminho-destinatario")
+                                        "dense no-caps rounded unelevated color=white text-color=primary "
+                                        "toggle-color=primary toggle-text-color=white"
+                                    ).classes("ring-1 ring-stone-200 rounded-full").mark("caminho-destinatario")
                                 else:
                                     avatar(destinos[0], tamanho=8)
-                                    ui.label(f"@{destinos[0]}").classes("font-semibold")
+                                    ui.label(f"@{destinos[0]}").classes("font-semibold txt-tinta")
                                 if item.texto is not None:
-                                    ui.label(f"“{encurtar(item.texto, 40)}”").classes("text-sm text-slate-500 italic truncate")
+                                    ui.label(f"“{encurtar(item.texto, 40)}”").classes("text-sm text-stone-500 italic truncate")
                                 ui.space()
                                 selo_modo(conversa.modo)
                                 ui.button("Ver a criptografia", icon="biotech",
@@ -129,7 +130,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 
                         topo()
                         grafico = ui.echart({"series": []}).classes("w-full").style("height: 440px")
-                        with ui.row().classes("w-full items-center gap-4 px-4 py-2 border-t border-slate-100"):
+                        with ui.row().classes("w-full items-center gap-4 px-4 py-2 border-t border-stone-100"):
                             legenda()
 
                     @ui.refreshable
@@ -143,35 +144,44 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                             para_quem = destinatario(conversa, item)
                             ui.label("Etapas do percurso").classes("rotulo")
                             trilha_percurso(item.remetente, inspecao.percurso(estado["rede"], para_quem), bool(estado["rede"]))
-                            with ui.row().classes("items-center gap-2 no-wrap rounded-xl bg-emerald-50 px-3 py-2"):
+                            with ui.row().classes("items-center gap-2 no-wrap rounded-xl fundo-menta px-3 py-2"):
                                 ui.icon("lock", color="positive")
                                 ui.label(
                                     f"Em cada nó o envelope continua cifrado: só a chave privada de @{para_quem}, "
                                     "guardada no aparelho dele, abre a mensagem."
-                                ).classes("text-sm text-emerald-900")
+                                ).classes("text-sm txt-ok")
 
                     trilha()
 
+            def mudou(parte: str, assinatura) -> bool:
+                """Cada parte só é refeita quando o que ela mostra muda: refazer à toa reinicia as animações."""
+                if estado.get(parte) == assinatura:
+                    return False
+                estado[parte] = assinatura
+                return True
+
             def redesenhar() -> None:
-                lista.refresh()
-                topo.refresh()
-                trilha.refresh()
+                escolha = selecionada()
+                message_id = escolha[1].message_id if escolha else None
+                if mudou("v_lista", (mensageiro.versao, message_id)):
+                    lista.refresh()
+                para_quem = destinatario(*escolha) if escolha else None
+                p = inspecao.percurso(estado["rede"], para_quem) if escolha else None
+                if mudou("v_topo", (message_id, para_quem)):
+                    topo.refresh()
+                situacao = p and (tuple(p.nos), p.status, p.parado_em, p.confirmado)
+                if mudou("v_trilha", (message_id, para_quem, bool(estado["rede"]), situacao)):
+                    trilha.refresh()
                 topologia: TopologiaOut | None = estado["topologia"]
                 if topologia is None:
                     return
-                escolha = selecionada()
                 if escolha is None or not estado["rede"]:
                     opcoes = diagrama.opcoes(topologia)
                 else:
-                    conversa, item = escolha
-                    para_quem = destinatario(conversa, item)
-                    p = inspecao.percurso(estado["rede"], para_quem)
+                    item = escolha[1]
                     adulterado = not item.propria and item.status == "rejeitada"  # só quem recebe percebe
                     opcoes = diagrama.opcoes(topologia, p.caminho, item.remetente, para_quem, p.status, adulterado)
-                # o ECharts reinicia a animação a cada atualização: só redesenha quando algo mudou
-                assinatura = json.dumps(opcoes, sort_keys=True, default=str)
-                if assinatura != estado.get("desenho"):
-                    estado["desenho"] = assinatura
+                if mudou("desenho", json.dumps(opcoes, sort_keys=True, default=str)):
                     grafico.options.clear()
                     grafico.options.update(opcoes)
                     grafico.update()
@@ -229,51 +239,58 @@ def legenda() -> None:
     for cor, texto in ((diagrama.COR_CIFRADO, "envelope cifrado"), (diagrama.COR_FILA, "na fila"), (diagrama.COR_ADULTERADO, "adulterado")):
         with ui.row().classes("items-center gap-1 no-wrap"):
             ui.element("span").classes("inline-block w-3 h-3 rounded-full").style(f"background:{cor}")
-            ui.label(texto).classes("text-xs text-slate-600")
+            ui.label(texto).classes("text-xs text-stone-600")
     with ui.row().classes("items-center gap-1 no-wrap"):
-        ui.element("span").classes("inline-block w-4 h-3 rounded bg-slate-300")
-        ui.label("nó desligado").classes("text-xs text-slate-600")
+        ui.element("span").classes("inline-block w-4 h-3 rounded").style(f"background:{diagrama.COR_NO_DESLIGADO}")
+        ui.label("nó desligado").classes("text-xs text-stone-600")
 
 
 def trilha_percurso(remetente: str, p: Percurso, com_rastro: bool = True) -> None:
-    """@remetente → nós → @destinatário, com a situação da entrega no fim."""
-    estacoes: list[tuple[str, str, str, str]] = [("person", f"@{remetente}", "escreveu e cifrou", "teal")]
+    """@remetente → nós → @destinatário: as estações surgem em sequência e o cifrado "corre" pelas conexões."""
+    estacoes: list[tuple[str, str, str, str]] = [("person", f"@{remetente}", "escreveu e cifrou", "marca")]
     if p.status == "sem_rota":
-        estacoes.append(("dns", p.parado_em or "relay", "esperando um caminho", "ambar"))
+        estacoes.append(("dns", p.parado_em or "relay", "esperando um caminho", "alerta"))
     elif p.nos:
-        estacoes += [("dns", no, "repassa o cifrado", "cinza") for no in p.nos]
+        estacoes += [("dns", no, "repassa o cifrado", "neutro") for no in p.nos]
     elif com_rastro:
-        estacoes.append(("dns", "servidor", "relay central", "cinza"))
+        estacoes.append(("dns", "servidor", "relay central", "neutro"))
     if not com_rastro:
-        final = ("a caminho", "azul")
+        final = ("a caminho", "info")
     elif p.status == "entregue":
-        final = ("recebeu e confirmou" if p.confirmado else "recebeu", "verde")
+        final = ("recebeu e confirmou" if p.confirmado else "recebeu", "ok")
     elif p.status == "offline":
-        final = ("offline: espera na fila", "ambar")
+        final = ("offline: espera na fila", "alerta")
     elif p.status == "sem_rota":
-        final = ("sem caminho até aqui", "vermelho")
+        final = ("sem caminho até aqui", "erro")
     else:
-        final = ("a caminho", "azul")
+        final = ("a caminho", "info")
     estacoes.append(("person", f"@{p.para}", *final))
 
+    ultima = len(estacoes) - 1
     with ui.row().classes("w-full items-start gap-1 flex-wrap"):
         for i, (icone, nome, legenda_estacao, tom) in enumerate(estacoes):
+            atraso = i * 0.18
             if i:
-                bloqueado = p.status == "sem_rota" and i == len(estacoes) - 1
-                _conexao(bloqueado)
-            with ui.column().classes("items-center gap-1 w-24"):
-                with ui.element("div").classes(f"rounded-full p-2 ring-1 flex {TONS[tom]}"):
+                if i == ultima and p.status == "sem_rota":
+                    tipo = "parado"
+                elif i == ultima and p.status == "offline":
+                    tipo = "fila"
+                else:
+                    tipo = "fluxo"
+                _conexao(tipo, atraso - 0.09)
+            chegou = i == ultima and com_rastro and p.status == "entregue"
+            with ui.column().classes("items-center gap-1 w-24 surgir").style(f"animation-delay: {atraso:.2f}s"):
+                with ui.element("div").classes(f"rounded-full p-2 ring-1 flex {TONS[tom]} {'pulso' if chegou else ''}"):
                     ui.icon(icone).classes("text-xl")
-                ui.label(nome).classes("text-sm font-semibold text-slate-800 text-center break-all leading-tight")
-                ui.label(legenda_estacao).classes("text-[11px] text-slate-500 text-center leading-tight")
+                ui.label(nome).classes("text-sm font-semibold txt-tinta text-center quebra leading-tight")
+                ui.label(legenda_estacao).classes("text-[11px] text-stone-500 text-center leading-tight")
 
 
-def _conexao(bloqueada: bool) -> None:
-    with ui.row().classes("items-center gap-0 no-wrap mt-3"):
-        linha = "border-dashed border-red-300" if bloqueada else "border-solid border-slate-300"
-        ui.element("div").classes(f"w-4 border-t-2 {linha}")
-        if bloqueada:
-            ui.icon("block", color="negative").classes("text-base")
+def _conexao(tipo: str, atraso: float) -> None:
+    """fluxo: o cifrado passando (animado); fila: parado esperando o destinatário; parado: sem caminho."""
+    with ui.column().classes("items-center gap-0.5 mt-1 surgir").style(f"animation-delay: {max(atraso, 0):.2f}s"):
+        if tipo == "parado":
+            ui.icon("block", color="negative").classes("text-sm")
         else:
-            ui.icon("lock", color="positive").classes("text-base")
-        ui.element("div").classes(f"w-4 border-t-2 {linha}")
+            ui.icon("lock", color="positive" if tipo == "fluxo" else "warning").classes("text-sm")
+        ui.element("div").classes("w-12 " + {"fluxo": "fluxo", "fila": "fluxo-fila", "parado": "fluxo-parado"}[tipo])

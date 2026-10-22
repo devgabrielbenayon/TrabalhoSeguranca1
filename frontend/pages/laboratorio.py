@@ -106,7 +106,7 @@ async def _mostrar_quebra(resultado: ui.column, publica: PublicaDidatica, origem
     except (fatoracao.FatoracaoFalhou, ValueError) as erro:
         resultado.clear()
         with resultado:
-            ui.label(f"Não foi possível: {erro}").classes("text-sm text-red-700")
+            ui.label(f"Não foi possível: {erro}").classes("text-sm txt-erro")
         return
     f = quebrada.fatoracao
     m = 42 % publica.n
@@ -123,13 +123,13 @@ async def _mostrar_quebra(resultado: ui.column, publica: PublicaDidatica, origem
         ]
         for i, (titulo, conta, nota) in enumerate(passos):
             with ui.row().classes("items-baseline gap-3 w-full"):
-                ui.label(titulo).classes("text-sm text-slate-600 w-48 shrink-0")
+                ui.label(titulo).classes("text-sm text-stone-600 w-48 shrink-0")
                 ui.label(conta).classes("font-mono text-sm break-all").mark(f"lab-passo-{i + 1}")
                 if nota:
-                    ui.label(nota).classes("text-xs text-slate-500")
+                    ui.label(nota).classes("text-xs text-stone-500")
         ui.label(
             "Com d nas mãos, um atacante decifra qualquer mensagem enviada a esta chave e forja assinaturas do dono."
-        ).classes("text-sm text-red-700")
+        ).classes("text-sm txt-erro")
 
 
 def _mostrar_inviavel(resultado: ui.column, nome: str, n: int) -> None:
@@ -141,7 +141,7 @@ def _mostrar_inviavel(resultado: ui.column, nome: str, n: int) -> None:
             "Pollard rho levaria da ordem de 2^512 passos. Ataques reais usam o crivo de corpos numéricos (GNFS), e o maior "
             "número RSA fatorado publicamente tem 829 bits (RSA-250, em 2020, com ~2.700 anos-núcleo de computação)."
         ).classes("text-sm")
-        ui.label("Meça abaixo e veja a extrapolação.").classes("text-sm text-slate-600")
+        ui.label("Meça abaixo e veja a extrapolação.").classes("text-sm text-stone-600")
 
 
 def _grafico_tamanhos() -> None:
@@ -152,7 +152,7 @@ def _grafico_tamanhos() -> None:
     ).classes("grow basis-96"):
         grafico = ui.echart(_opcoes_barras([], [])).classes("w-full").style("height: 320px")
         tabela = ui.column().classes("w-full")
-        progresso = ui.label("").classes("text-xs text-slate-500")
+        progresso = ui.label("").classes("text-xs text-stone-500")
 
         async def medir() -> None:
             botao.disable()
@@ -237,12 +237,12 @@ def _grafico_fatoracao() -> None:
                     with ui.row().classes("gap-2"):
                         ui.label(f"{alvo} bits").classes("text-sm w-20")
                         ui.label(medicoes.formatar_log10_ms(estimativa)).classes(
-                            "text-sm font-mono " + ("text-red-700" if alvo <= 128 else "text-green-800")
+                            "text-sm font-mono " + ("txt-erro" if alvo <= 128 else "txt-ok")
                         ).mark(f"lab-extrapolacao-{alvo}")
                 ui.label(
                     "Só para comparar: a idade do universo é ~1,4 × 10^10 anos. O rho não é o melhor ataque, mas mesmo o GNFS "
                     "não alcança 2048 bits."
-                ).classes("text-xs text-slate-500")
+                ).classes("text-xs text-stone-500")
 
         botao = ui.button("Medir fatoração", icon="timer", on_click=medir).mark("lab-medir-fatoracao")
 

@@ -36,9 +36,9 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
             ui.notify(mensagem_erro(erro), type="negative")
         with moldura(sessao, mensageiro, "/"):
             with ui.row().classes("items-center gap-3"):
-                ui.label(f"Olá, {sessao.usuario.nome}").classes("text-2xl font-bold text-slate-800")
+                ui.label(f"Olá, {sessao.usuario.nome}").classes("text-2xl font-bold text-stone-800")
                 if sessao.admin:
-                    pilula("administrador", "ambar", "admin_panel_settings")
+                    pilula("administrador", "alerta", "admin_panel_settings")
             if estatisticas is None:
                 return
 
@@ -69,7 +69,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                         with ui.row().classes("items-center gap-2 no-wrap"):
                             selo_modo(modo)
                             ui.label(privada.publica.key_id if privada else f"sem {NOME_CHAVE[modo]}").classes(
-                                "font-mono text-sm " + ("text-slate-800" if privada else "text-red-700")
+                                "font-mono text-sm " + ("text-stone-800" if privada else "txt-erro")
                             )
                     ui.button("Ver minhas chaves", icon="vpn_key", on_click=lambda: ui.navigate.to("/chaves")).props(
                         "flat no-caps color=primary"
@@ -77,29 +77,29 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 
 
 def _contador(icone: str, titulo: str, valor, rodape: str, destaque: bool = False) -> None:
-    with cartao("grow basis-40 gap-1 " + ("bg-amber-50" if destaque else "")):
+    with cartao("grow basis-40 gap-1 " + ("fundo-pessego" if destaque else "")):
         with ui.row().classes("items-center gap-2 no-wrap"):
-            icone_destaque(icone, "ambar" if destaque else "teal", "text-lg")
-            ui.label(titulo).classes("text-sm text-slate-600")
-        ui.label(str(valor)).classes("text-3xl font-bold text-slate-800 pt-1")
-        ui.label(rodape).classes("text-xs text-slate-500")
+            icone_destaque(icone, "alerta" if destaque else "marca", "text-lg")
+            ui.label(titulo).classes("text-sm text-stone-600")
+        ui.label(str(valor)).classes("text-3xl font-bold text-stone-800 pt-1")
+        ui.label(rodape).classes("text-xs text-stone-500")
 
 
 def _passo_roteiro(numero: int, titulo: str, texto: str, rota: str, icone: str) -> None:
     with ui.row().classes(
-        "items-start gap-3 no-wrap rounded-xl p-3 ring-1 ring-slate-200 hover:ring-teal-400 hover:bg-teal-50/40 cursor-pointer"
+        "items-start gap-3 no-wrap rounded-xl p-3 ring-1 ring-stone-200 clicavel cursor-pointer"
     ).on("click", lambda: ui.navigate.to(rota)):
         ui.label(str(numero)).classes(
-            "rounded-full bg-teal-700 text-white w-7 h-7 flex items-center justify-center text-sm font-bold shrink-0"
+            "rounded-full bolinha w-7 h-7 flex items-center justify-center text-sm font-bold shrink-0"
         )
         with ui.column().classes("gap-0 grow"):
             with ui.row().classes("items-center gap-1 no-wrap"):
                 ui.icon(icone, color="primary").classes("text-base")
-                ui.label(titulo).classes("font-bold text-teal-900")
-            ui.label(texto).classes("text-sm text-slate-600")
+                ui.label(titulo).classes("font-bold txt-tinta")
+            ui.label(texto).classes("text-sm text-stone-600")
 
 
 def _linha(rotulo: str, valor: str) -> None:
     with ui.row().classes("items-center gap-2 no-wrap"):
-        ui.label(rotulo).classes("text-sm text-slate-500 w-28 shrink-0")
+        ui.label(rotulo).classes("text-sm text-stone-500 w-28 shrink-0")
         ui.label(valor).classes("text-sm font-medium")

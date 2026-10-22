@@ -66,7 +66,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                     and (filtro.value != "online" or c.online)
                     and (c.ativo if filtro.value != "removidos" else not c.ativo)
                 ]
-                ui.label(f"{len(visiveis)} cliente(s)").classes("text-sm text-slate-500")
+                ui.label(f"{len(visiveis)} cliente(s)").classes("text-sm text-stone-500")
                 with ui.column().classes("w-full gap-2"):
                     for cliente in visiveis:
                         _linha_cliente(sessao, cliente, dados["nos"], carregar)
@@ -83,19 +83,19 @@ def _linha_cliente(sessao: Sessao, cliente: ClienteOut, nos: list[ServidorOut], 
         with ui.row().classes("items-center gap-3 w-full no-wrap max-md:flex-wrap"):
             with ui.element("div").classes("relative"):
                 avatar(cliente.username, cliente.avatar, tamanho=11)
-                cor = "bg-green-500" if cliente.online else "bg-slate-300"
+                cor = "bg-green-500" if cliente.online else "bg-stone-300"
                 ui.element("span").classes(f"absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-white {cor}")
             with ui.column().classes("gap-0 min-w-0 grow"):
                 with ui.row().classes("items-center gap-2"):
                     ui.label(f"@{cliente.username}").classes("font-bold")
-                    ui.label(cliente.nome).classes("text-slate-600")
+                    ui.label(cliente.nome).classes("text-stone-600")
                     if proprio:
                         ui.badge("você", color="primary")
                     if cliente.is_admin:
-                        ui.badge("admin", color="amber-8")
+                        ui.badge("admin").props("rounded color=primary")
                     if not cliente.ativo:
                         ui.badge("removido", color="negative")
-                with ui.row().classes("items-center gap-2 text-xs text-slate-500"):
+                with ui.row().classes("items-center gap-2 text-xs text-stone-500"):
                     ui.icon("dns").classes("text-sm")
                     ui.label(cliente.servidor or "sem nó (relay central)")
                     ui.label("·")
@@ -145,7 +145,7 @@ def _dialogo_edicao(sessao: Sessao, cliente: ClienteOut, nos: list[ServidorOut],
             no = ui.select(opcoes, value=cliente.server_id, label="Nó de origem").classes("w-full").mark("cliente-no")
             papel = ui.switch("Administrador", value=cliente.is_admin).mark("cliente-admin")
         else:
-            ui.label("O nó e o papel são definidos por um administrador.").classes("text-xs text-slate-500")
+            ui.label("O nó e o papel são definidos por um administrador.").classes("text-xs text-stone-500")
 
         async def salvar() -> None:
             campos = {"nome": nome.value, "avatar": imagem.value or None}

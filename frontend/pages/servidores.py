@@ -105,14 +105,14 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 
 def _cartao_no(sessao: Sessao, no: ServidorOut, nomes: dict[int, str], topologia: TopologiaOut, alternar, recarregar) -> None:
     online = {c.username for c in topologia.clientes if c.online}
-    with ui.card().classes("w-full shadow-sm " + ("" if no.ativo else "bg-slate-50")):
+    with ui.card().classes("w-full shadow-sm " + ("" if no.ativo else "bg-stone-50")):
         with ui.row().classes("items-center gap-2 w-full no-wrap"):
             ui.icon("dns", color="primary" if no.ativo else "grey-5").classes("text-2xl")
             with ui.column().classes("gap-0 grow min-w-0"):
                 with ui.row().classes("items-center gap-2"):
                     ui.label(no.nome).classes("font-bold")
                     ui.badge("ligado" if no.ativo else "desligado", color="positive" if no.ativo else "grey-6")
-                ui.label(f"{no.regiao or 'sem região'} · {no.host}:{no.porta}").classes("text-xs text-slate-500")
+                ui.label(f"{no.regiao or 'sem região'} · {no.host}:{no.porta}").classes("text-xs text-stone-500")
             if sessao.admin:
                 ui.switch(value=no.ativo, on_change=lambda e: alternar(no, e.value)).props("color=positive").mark(
                     f"servidor-ligado-{no.nome}"
@@ -125,17 +125,17 @@ def _cartao_no(sessao: Sessao, no: ServidorOut, nomes: dict[int, str], topologia
                 ).mark(f"servidor-remover-{no.nome}")
         ocupacao = len(no.clientes) / max(no.capacidade, 1)
         with ui.row().classes("items-center gap-2 w-full no-wrap"):
-            ui.label(f"{len(no.clientes)}/{no.capacidade} clientes").classes("text-xs text-slate-600 w-28 shrink-0")
+            ui.label(f"{len(no.clientes)}/{no.capacidade} clientes").classes("text-xs text-stone-600 w-28 shrink-0")
             ui.linear_progress(value=min(ocupacao, 1.0), show_value=False).props("rounded size=8px color=primary").classes("grow")
         with ui.row().classes("items-center gap-1 flex-wrap"):
-            ui.label("Vizinhos:").classes("text-xs text-slate-500")
+            ui.label("Vizinhos:").classes("text-xs text-stone-500")
             for vizinho in no.vizinhos:
                 ui.badge(nomes.get(vizinho, f"#{vizinho}"), color="grey-7").props("outline")
             if not no.vizinhos:
-                ui.label("nenhum (isolado)").classes("text-xs text-amber-800")
+                ui.label("nenhum (isolado)").classes("text-xs txt-alerta")
         if no.clientes:
             with ui.row().classes("items-center gap-1 flex-wrap"):
-                ui.label("Clientes:").classes("text-xs text-slate-500")
+                ui.label("Clientes:").classes("text-xs text-stone-500")
                 for cliente in no.clientes:
                     ui.chip(f"@{cliente}", icon="circle" if cliente in online else "radio_button_unchecked").props(
                         f"dense outline {'color=positive' if cliente in online else ''}"

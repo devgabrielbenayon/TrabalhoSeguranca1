@@ -48,7 +48,7 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
                 "hub",
             )
             if not sessao.admin:
-                ui.label("Só administradores acompanham o tráfego de todos os usuários.").classes("text-slate-600")
+                ui.label("Só administradores acompanham o tráfego de todos os usuários.").classes("text-stone-600")
                 return
 
             estado = {"selecionado": None, "seguir": True}  # selecionado = seq de um evento "transito"
@@ -67,7 +67,7 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
             with ui.row().classes("w-full gap-4 items-stretch no-wrap max-lg:flex-wrap"):
                 with cartao("grow min-w-0"):
                     with ui.row().classes("w-full items-center gap-3"):
-                        ui.label("Caminho do envelope").classes("text-base font-bold text-slate-800")
+                        ui.label("Caminho do envelope").classes("text-base font-bold text-stone-800")
                         legenda()
                         ui.space()
                         seguir = ui.switch("acompanhar o mais recente", value=True,
@@ -82,17 +82,17 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
 
                         botao_adulterar = ui.button(on_click=alternar_adulteracao).props("no-caps").mark("observador-adulterar")
                     grafico = ui.echart({"series": []}).classes("w-full").style("height: 470px")
-                    resumo = ui.label().classes("text-sm text-slate-700")
+                    resumo = ui.label().classes("text-sm text-stone-700")
 
                 with cartao("w-96 shrink-0 max-lg:w-full"):
-                    ui.label("Tráfego ao vivo").classes("text-base font-bold text-slate-800")
+                    ui.label("Tráfego ao vivo").classes("text-base font-bold text-stone-800")
                     with ui.scroll_area().style("height: 520px").classes("w-full"):
 
                         @ui.refreshable
                         def trafego() -> None:
                             eventos = observador.recentes()
                             if not eventos:
-                                ui.label("Nada ainda. Envie uma mensagem pelo chat.").classes("text-sm text-slate-500")
+                                ui.label("Nada ainda. Envie uma mensagem pelo chat.").classes("text-sm text-stone-500")
                             atual = evento_atual()
                             for evento in eventos[:120]:
                                 _linha_evento(evento, atual is not None and evento["seq"] == atual["seq"], selecionar)
@@ -164,10 +164,10 @@ def _descrever(evento: dict) -> str:
 
 def _linha_evento(evento: dict, selecionado: bool, selecionar) -> None:
     tipo = evento["type"]
-    classes = "w-full rounded-xl p-2 gap-1 no-wrap items-start " + ("bg-teal-50 ring-1 ring-teal-200" if selecionado else "")
+    classes = "w-full rounded-xl p-2 gap-1 no-wrap items-start " + ("selecionado" if selecionado else "clicavel")
     with ui.row().classes(classes) as linha:
         if tipo == "transito":
-            linha.classes("cursor-pointer hover:bg-slate-50").on("click", lambda s=evento["seq"]: selecionar(s))
+            linha.classes("cursor-pointer hover:bg-stone-50").on("click", lambda s=evento["seq"]: selecionar(s))
             icone = "gpp_bad" if evento.get("adulterado") else ("lock" if evento["status"] == "entregue" else "schedule")
             cor = "negative" if evento.get("adulterado") else COR_STATUS[evento["status"]]
             ui.icon(icone, color=cor).classes("text-lg mt-0.5")
@@ -175,14 +175,14 @@ def _linha_evento(evento: dict, selecionado: bool, selecionar) -> None:
                 with ui.row().classes("items-center gap-1 no-wrap"):
                     ui.label(f"@{evento['de']} → @{evento['para']}").classes("font-medium text-sm")
                     selo_modo(evento["modo"])
-                ui.label(encurtar(_caminho_texto(evento), 44)).classes("text-xs text-slate-600")
+                ui.label(encurtar(_caminho_texto(evento), 44)).classes("text-xs text-stone-600")
                 rotulo = ROTULO_STATUS[evento["status"]] + (" (da fila)" if evento.get("da_fila") else "")
-                ui.label(rotulo + (" · adulterado" if evento.get("adulterado") else "")).classes("text-xs text-slate-500")
+                ui.label(rotulo + (" · adulterado" if evento.get("adulterado") else "")).classes("text-xs text-stone-500")
         else:
             icone, texto = _resumo_evento(evento)
             ui.icon(icone, color="grey-7").classes("text-lg mt-0.5")
-            ui.label(texto).classes("text-xs text-slate-600 grow")
-        ui.label(hora(evento["ts"]) + evento["ts"][16:19]).classes("text-xs text-slate-400 shrink-0")
+            ui.label(texto).classes("text-xs text-stone-600 grow")
+        ui.label(hora(evento["ts"]) + evento["ts"][16:19]).classes("text-xs text-stone-400 shrink-0")
 
 
 def _resumo_evento(evento: dict) -> tuple[str, str]:
@@ -216,16 +216,16 @@ def _visao_servidor(evento: dict) -> None:
         ]
         for rotulo, valor in linhas:
             with ui.row().classes("gap-2 no-wrap w-full"):
-                ui.label(rotulo).classes("text-xs text-slate-500 w-24 shrink-0")
+                ui.label(rotulo).classes("text-xs text-stone-500 w-24 shrink-0")
                 ui.label(valor).classes("text-sm break-all")
-        ui.label("Conteúdo guardado (blocos cifrados, em hexadecimal):").classes("text-xs text-slate-500 mt-2")
+        ui.label("Conteúdo guardado (blocos cifrados, em hexadecimal):").classes("text-xs text-stone-500 mt-2")
         blocos = [base64.b64decode(b).hex() for b in envelope["blocks"][:6]]
         ui.code("\n".join(encurtar(b, 72) for b in blocos) + ("\n…" if len(envelope["blocks"]) > 6 else ""), language=None).classes(
             "w-full text-xs"
         )
-        with ui.row().classes("items-center gap-2 no-wrap rounded-xl bg-emerald-50 px-3 py-2"):
+        with ui.row().classes("items-center gap-2 no-wrap rounded-xl fundo-menta px-3 py-2"):
             ui.icon("visibility_off", color="positive")
-            ui.label("O texto não está aqui: o servidor não tem a privada de ninguém.").classes("text-sm text-emerald-900")
+            ui.label("O texto não está aqui: o servidor não tem a privada de ninguém.").classes("text-sm txt-ok")
 
 
 def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
@@ -238,9 +238,9 @@ def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
         quadro = json.dumps({"type": "message", "envelope": evento["envelope"]}, ensure_ascii=False)
         ui.code(encurtar(quadro, 280), language="json").classes("w-full text-xs")
         bruto = base64.b64decode(envelope.blocks[0])
-        ui.label("Tentando ler o 1º bloco como texto:").classes("text-xs text-slate-500")
+        ui.label("Tentando ler o 1º bloco como texto:").classes("text-xs text-stone-500")
         ui.label(bruto.decode("latin-1").translate({i: "·" for i in range(32)})[:64]).classes(
-            "font-mono text-sm bg-slate-100 rounded px-2 break-all"
+            "font-mono text-sm bg-stone-100 rounded px-2 break-all"
         )
         resultado = ui.column().classes("w-full gap-1")
 
@@ -253,7 +253,7 @@ def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
                     conteudo = decifrar_capturado(envelope, quebrada.privada())
                 except (ErroApi, httpx.HTTPError, fatoracao.FatoracaoFalhou, ErroEnvelope) as erro:
                     with resultado:
-                        ui.label(f"Não deu: {mensagem_erro(erro)}").classes("text-sm text-slate-600")
+                        ui.label(f"Não deu: {mensagem_erro(erro)}").classes("text-sm text-stone-600")
                     return
                 f = quebrada.fatoracao
                 with resultado:
@@ -263,19 +263,19 @@ def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
                     ui.label(f"φ(n) = {quebrada.phi}   d = e⁻¹ mod φ(n) = {quebrada.d}").classes("font-mono text-xs")
                     with ui.row().classes("items-center gap-1"):
                         ui.icon("lock_open", color="negative")
-                        ui.label(f"Mensagem lida: “{conteudo['text']}”").classes("text-base font-bold text-red-700").mark(
+                        ui.label(f"Mensagem lida: “{conteudo['text']}”").classes("text-base font-bold txt-erro").mark(
                             "interceptador-texto"
                         )
                     ui.label("Chave didática de poucos bits: fatorar n devolve d. Por isso o modo real usa 2048 bits.").classes(
-                        "text-xs text-slate-600"
+                        "text-xs text-stone-600"
                     )
 
             ui.button(f"Quebrar a chave de @{envelope.to} e ler", icon="lock_open", on_click=quebrar_e_ler).props(
                 "outline color=negative no-caps"
             ).mark("interceptador-quebrar")
         else:
-            with ui.row().classes("items-center gap-2 no-wrap rounded-xl bg-emerald-50 px-3 py-2"):
+            with ui.row().classes("items-center gap-2 no-wrap rounded-xl fundo-menta px-3 py-2"):
                 ui.icon("verified_user", color="positive")
                 ui.label("RSA-OAEP 2048: sem a privada, só fatorando um n de 617 dígitos — inviável.").classes(
-                    "text-sm text-emerald-900"
+                    "text-sm txt-ok"
                 )
