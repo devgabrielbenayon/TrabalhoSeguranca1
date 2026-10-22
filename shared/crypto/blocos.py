@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-MAX_TEXTO_BYTES = 2000
+MAX_TEXTO_CARACTERES = 2000
 PREENCHIMENTO = b"\x00"  # JSON em UTF-8 nunca contém byte nulo, então pode ser removido com segurança
 
 
@@ -17,9 +17,8 @@ class MensagemGrandeDemais(ValueError):
 
 
 def codificar_conteudo(remetente: str, message_id: str, texto: str) -> bytes:
-    tamanho = len(texto.encode("utf-8"))
-    if tamanho > MAX_TEXTO_BYTES:
-        raise MensagemGrandeDemais(f"mensagem com {tamanho} bytes; o limite é {MAX_TEXTO_BYTES}")
+    if len(texto) > MAX_TEXTO_CARACTERES:
+        raise MensagemGrandeDemais(f"mensagem com {len(texto)} caracteres; o limite é {MAX_TEXTO_CARACTERES}")
     conteudo = {"from": remetente, "message_id": message_id, "text": texto}
     return json.dumps(conteudo, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 

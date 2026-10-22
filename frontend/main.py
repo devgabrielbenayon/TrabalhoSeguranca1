@@ -11,7 +11,7 @@ from nicegui import ui
 from frontend.api_client import ApiCliente
 from frontend.mensageiro import Mensageiro
 from frontend.observador import ClienteObservador
-from frontend.pages import chat, chaves, clientes, conta, inicio, inspetor, laboratorio, observador, servidores
+from frontend.pages import caminho, chat, chaves, clientes, conta, inicio, inspetor, laboratorio, observador, servidores
 from frontend.sessao import Sessao
 
 API_URL = os.environ.get("CRIPTOCHAT_API", "http://127.0.0.1:8000")
@@ -28,10 +28,11 @@ inicio.registrar_paginas(sessao, mensageiro)
 chat.registrar_paginas(sessao, mensageiro)
 chaves.registrar_paginas(sessao, mensageiro)
 inspetor.registrar_paginas(sessao, mensageiro)
+caminho.registrar_paginas(sessao, mensageiro)
 observador.registrar_paginas(sessao, assinante, mensageiro)
 clientes.registrar_paginas(sessao, mensageiro)
 servidores.registrar_paginas(sessao, mensageiro)
-laboratorio.registrar_paginas(sessao, mensageiro)
+laboratorio.registrar_paginas(sessao, mensageiro)  # fora do menu: só pelo endereço /laboratorio
 
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(title=f"CriptoChat RSA :{PORTA}", host=HOST, port=PORTA, reload=False, show=False, favicon="🔐")

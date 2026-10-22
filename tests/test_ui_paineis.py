@@ -1,4 +1,4 @@
-"""Telas novas com o simulador de usuário: Inspetor, Observador, Servidores, Clientes, Laboratório e Dashboard."""
+"""Telas novas com o simulador de usuário: Inspetor, Caminho, Observador, Servidores, Clientes, Laboratório e Dashboard."""
 
 from pathlib import Path
 
@@ -37,20 +37,26 @@ async def test_paineis_do_administrador(servidor, tmp_path, monkeypatch):
             conversa = await bob.nova_conversa(["alice"], "didatico")
 
             await alice.open("/chat")
-            await alice.should_see("um envelope cifrado e assinado por participante", retries=50)
+            await alice.should_see("Criptografia ponta a ponta", retries=50)
             alice.find(marker="chat-texto").type("raio-x")
             alice.find(marker="chat-enviar").click()
             await esperar(lambda: [i.texto for i in bob.conversas[conversa.id].mensagens.values()] == ["raio-x"])
 
-            # Inspetor: trilha, números do modo didático, rede e experimentos
+            # Inspetor: os passos, números do modo didático, rede e experimentos
             await alice.open("/inspetor")
-            await alice.should_see("Raio-X", retries=50)
+            await alice.should_see("Cifrar com a chave pública de @bob", retries=50)
             await alice.should_see("Square-and-multiply")
-            await alice.should_see("Manaus › Brasília › São Paulo")  # cartão "Rede", do rastro do servidor
+            await alice.should_see("Manaus › Brasília › São Paulo")  # passo "rede", do rastro do servidor
             alice.find(marker="experimento-adulterar").click()
             await alice.should_see("a assinatura deixa de conferir", retries=20)
             alice.find(marker="experimento-chave-errada").click()
             await alice.should_see("o resultado é lixo", retries=50)
+
+            # Caminho da mensagem: o percurso pelos nós, até a confirmação de Bob
+            await alice.open("/caminho")
+            await alice.should_see("Etapas do percurso", retries=50)
+            await alice.should_see("Brasília")
+            await alice.should_see("recebeu e confirmou", retries=50)
 
             # Observador: visão do servidor e o interceptador quebrando a chave didática de Bob
             await alice.open("/observador")
@@ -87,6 +93,8 @@ async def test_paineis_do_administrador(servidor, tmp_path, monkeypatch):
             await alice.open("/")
             await alice.should_see("Roteiro da demonstração", retries=50)
             await alice.should_see("Nós ligados")
+            await alice.should_see("Caminho da mensagem")  # no menu lateral
+            await alice.should_not_see("Laboratório")  # fora do menu e do roteiro
     finally:
         await bob.desconectar()
         await bob.sessao.api.fechar()
@@ -111,7 +119,7 @@ async def test_paineis_de_um_usuario_comum(servidor, tmp_path, monkeypatch):
 
             # Minhas chaves: apagar a privada didática deste aparelho (simulação "apagar privada")
             await bob.open("/chaves")
-            await bob.should_see("Keystore deste aparelho", retries=50)
+            await bob.should_see("Onde cada chave fica", retries=50)
             didatica = Sessao(ApiCliente(servidor["http"]), tmp_path / "aparelho-bob")
             await didatica.entrar("bob", "segredo123")
             key_id = didatica.keystore.ativa("didatico").publica.key_id

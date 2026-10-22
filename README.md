@@ -38,13 +38,16 @@ Variáveis de ambiente: `CRIPTOCHAT_API` (URL do back-end), `CRIPTOCHAT_PORTA`, 
 | Tela | O que mostra |
 |---|---|
 | Início | Contadores, estado do aparelho e o roteiro da demonstração |
-| Chat | Conversas 1:1 e em grupo; status de entrega, assinatura verificada, fila "sem caminho" e atalho para o Inspetor |
-| Minhas chaves | Trocar e excluir chave, histórico, keystore local (apagar privada) e diretório de chaves públicas |
-| Inspetor | Raio-X de uma mensagem: blocos, mᵉ mod n, assinatura, saltos na rede, cᵈ mod n, tabela square-and-multiply, linha do tempo e experimentos (chave errada, bit adulterado) |
-| Observador (admin) | Caminho animado do envelope pelos nós, tráfego ao vivo, visão do servidor e do interceptador (que quebra chaves didáticas e lê a mensagem) e adulteração de demonstração |
+| Chat | Conversas 1:1 e em grupo; entrega e assinatura como ícones (o detalhe aparece ao passar o mouse), fila "sem caminho", contador de caracteres e atalhos para o Inspetor e o Caminho |
+| Inspetor | Uma mensagem em 7 passos — aparelho de quem envia, rede, aparelho de quem recebe —, com os números reais ao abrir cada passo (blocos, mᵉ mod n, assinatura, cᵈ mod n, square-and-multiply), "quem vê o quê" e experimentos (chave errada, bit adulterado) |
+| Caminho da mensagem | O envelope animado sobre a topologia, por destinatário, até a confirmação de entrega. Qualquer usuário, para as próprias mensagens |
+| Minhas chaves | Onde cada chave fica (aparelho, servidor, contatos), as duas metades do par de cada modo, o ciclo de vida (troca, exclusão, apagar privada) e o diretório de chaves públicas |
+| Observador (admin) | Tráfego de todos ao vivo: caminho animado, visão do servidor e do interceptador (que quebra chaves didáticas e lê a mensagem) e adulteração de demonstração |
 | Clientes | CRUD: busca, edição do perfil, mudança de nó, promoção, remoção (revoga as chaves) e reativação |
 | Servidores | CRUD de nós e ligações; desligar um nó recalcula o caminho ou deixa a mensagem na fila |
-| Laboratório | Quebrar uma chave fatorando n, e gráficos de tempo por tamanho de chave e de custo da fatoração |
+
+O Laboratório (quebrar uma chave fatorando n e gráficos de tempo por tamanho de chave) saiu do menu, mas continua
+disponível em `/laboratorio`.
 
 ## Testes
 

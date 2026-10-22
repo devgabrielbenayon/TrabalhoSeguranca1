@@ -34,11 +34,13 @@ async def test_cadastro_e_conversa_pela_interface(servidor, tmp_path, monkeypatc
             await alice.should_see("φ(n)")
 
             await alice.open("/chat")
+            alice.find(marker="chat-nova").click()
             alice.find(marker="chat-participantes").type("bob")
             alice.find(marker="chat-criar").click()
-            await alice.should_see("um envelope cifrado e assinado por participante", retries=50)
+            await alice.should_see("Criptografia ponta a ponta", retries=50)
 
             alice.find(marker="chat-texto").type("oi do navegador")
+            await alice.should_see("15/2000 caracteres")
             alice.find(marker="chat-enviar").click()
             await esperar(lambda: any(
                 i.texto == "oi do navegador" and i.status == "verificada"
@@ -72,7 +74,7 @@ async def test_trocar_e_excluir_chave_pela_interface(servidor, tmp_path, monkeyp
 
         await alice.open("/chaves")
         alice.find(marker="trocar-real").click()
-        await alice.should_see("substituida · privada neste aparelho", retries=100)
+        await alice.should_see("substituída · privada neste aparelho", retries=100)
 
         alice.find(marker="excluir-didatico").click()
         alice.find(marker="excluir-senha").type("segredo123")

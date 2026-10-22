@@ -2,12 +2,15 @@
 
 import base64
 import math
+from datetime import datetime, timezone
 
 import pytest
 
 from frontend import inspecao, medicoes
+from frontend.inspecao import Percurso
 from shared.crypto import rsa_didatico, rsa_real
 from shared.crypto.envelope import montar_envelopes
+from shared.schemas import EventoTransitoOut
 from shared.trace import Tracer
 
 
@@ -72,6 +75,33 @@ def test_um_bit_trocado_invalida_a_assinatura(modo, reais):
     experimento = inspecao.adulterar_e_verificar(_para(alice, bob), alice.publica)
     assert [linha["confere"] for linha in experimento.linhas] == [True, False]
     assert experimento.linhas[0]["sha256"] != experimento.linhas[1]["sha256"]
+
+
+def _transito(etapa, ator, entrada, saida=None):
+    return EventoTransitoOut(etapa=etapa, ator=ator, entrada=entrada, saida=saida, duracao_ms=0, ts=datetime.now(timezone.utc))
+
+
+def test_percurso_vale_a_ultima_tentativa():
+    rede = [
+        _transito("recebido", "Manaus", {"de": "alice", "para": ["alice", "bob"]}),
+        _transito("salto", "Manaus", {"de": "@alice", "para": "bob"}, {"repassa_para": "São Paulo"}),
+        _transito("salto", "São Paulo", {"de": "Manaus", "para": "bob"}, {"repassa_para": "@bob"}),
+        _transito("fila", "São Paulo", {"para": "bob"}, {"motivo": "offline"}),
+    ]
+    assert inspecao.percurso(rede, "bob") == Percurso("bob", ["Manaus", "São Paulo"], "offline", "São Paulo")
+    # a reentrega da fila do nó do destinatário não registra os saltos de novo: o caminho continua valendo
+    rede += [
+        _transito("entregue", "São Paulo", {"para": "bob"}, "repassado pelo WebSocket"),
+        _transito("confirmado", "São Paulo", {"por": "bob"}, "entrega confirmada"),
+    ]
+    assert inspecao.percurso(rede, "bob") == Percurso("bob", ["Manaus", "São Paulo"], "entregue", None, confirmado=True)
+    assert inspecao.percurso(rede, "carol").status == "a_caminho"
+
+
+def test_sem_caminho_o_diagrama_recebe_none():
+    rede = [_transito("fila", "Manaus", {"para": "bob"}, {"motivo": "sem_rota"})]
+    percurso = inspecao.percurso(rede, "bob")
+    assert (percurso.status, percurso.caminho, percurso.parado_em) == ("sem_rota", None, "Manaus")
 
 
 def test_medir_uma_chave_pequena():

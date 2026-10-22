@@ -16,7 +16,8 @@ from frontend.api_client import ErroApi
 from frontend.mensageiro import Mensageiro
 from frontend.observador import ClienteObservador
 from frontend.pages import diagrama
-from frontend.pages.layout import conectar, encurtar, hora, mensagem_erro, moldura, secao, selo_modo, titulo_pagina
+from frontend.pages.caminho import legenda
+from frontend.pages.layout import cartao, conectar, encurtar, hora, mensagem_erro, moldura, secao, selo_modo, titulo_pagina
 from frontend.sessao import Sessao
 from shared.crypto import fatoracao
 from shared.crypto.chaves import carregar_publica
@@ -43,7 +44,7 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
             conteudo.classes("max-w-none")
             titulo_pagina(
                 "Observador",
-                "O que passa pelo servidor, ao vivo: por quais nós cada envelope anda e o que dá para ver dele.",
+                "Todo o tráfego, ao vivo: por onde cada envelope anda e o que o servidor e um espião conseguem ver.",
                 "hub",
             )
             if not sessao.admin:
@@ -64,10 +65,10 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
                 redesenhar()
 
             with ui.row().classes("w-full gap-4 items-stretch no-wrap max-lg:flex-wrap"):
-                with ui.card().classes("grow shadow-sm min-w-0"):
+                with cartao("grow min-w-0"):
                     with ui.row().classes("w-full items-center gap-3"):
-                        ui.label("Caminho do envelope").classes("text-lg font-bold")
-                        _legenda()
+                        ui.label("Caminho do envelope").classes("text-base font-bold text-slate-800")
+                        legenda()
                         ui.space()
                         seguir = ui.switch("acompanhar o mais recente", value=True,
                                            on_change=lambda e: (estado.update(seguir=e.value), redesenhar()))
@@ -83,8 +84,8 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
                     grafico = ui.echart({"series": []}).classes("w-full").style("height: 470px")
                     resumo = ui.label().classes("text-sm text-slate-700")
 
-                with ui.card().classes("w-96 shrink-0 shadow-sm max-lg:w-full"):
-                    ui.label("Tráfego ao vivo").classes("text-lg font-bold")
+                with cartao("w-96 shrink-0 max-lg:w-full"):
+                    ui.label("Tráfego ao vivo").classes("text-base font-bold text-slate-800")
                     with ui.scroll_area().style("height: 520px").classes("w-full"):
 
                         @ui.refreshable
@@ -148,13 +149,6 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
             redesenhar()
 
 
-def _legenda() -> None:
-    for cor, texto in ((diagrama.COR_CIFRADO, "cifrado"), (diagrama.COR_FILA, "na fila"), (diagrama.COR_ADULTERADO, "adulterado")):
-        with ui.row().classes("items-center gap-1"):
-            ui.element("span").classes("inline-block w-3 h-3 rounded-full").style(f"background:{cor}")
-            ui.label(texto).classes("text-xs text-slate-600")
-
-
 def _caminho_texto(evento: dict) -> str:
     if evento["caminho"] is None:
         return "sem caminho entre os nós"
@@ -170,7 +164,7 @@ def _descrever(evento: dict) -> str:
 
 def _linha_evento(evento: dict, selecionado: bool, selecionar) -> None:
     tipo = evento["type"]
-    classes = "w-full rounded p-2 gap-1 no-wrap items-start " + ("bg-teal-50 ring-1 ring-teal-300" if selecionado else "")
+    classes = "w-full rounded-xl p-2 gap-1 no-wrap items-start " + ("bg-teal-50 ring-1 ring-teal-200" if selecionado else "")
     with ui.row().classes(classes) as linha:
         if tipo == "transito":
             linha.classes("cursor-pointer hover:bg-slate-50").on("click", lambda s=evento["seq"]: selecionar(s))
@@ -214,26 +208,24 @@ def _visao_servidor(evento: dict) -> None:
     envelope = evento["envelope"]
     with secao("Visão do servidor", "dns", "Tudo o que o relay sabe deste envelope — e grava no banco.").classes("grow basis-96"):
         linhas = [
-            ("Remetente → destinatário", f"@{evento['de']} → @{evento['para']}  (metadado: o servidor sabe quem fala com quem)"),
-            ("Conversa / modo", f"#{evento['conversation_id']} · {evento['modo']}"),
-            ("Chaves", f"assinado com {envelope['from_key_id']}, cifrado para {envelope['to_key_id']}"),
-            ("Enviado em (declarado)", envelope["sent_at"]),
-            ("Caminho", _caminho_texto(evento)),
+            ("Quem → quem", f"@{evento['de']} → @{evento['para']}"),
+            ("Quando", envelope["sent_at"]),
+            ("Por onde", _caminho_texto(evento)),
             ("Tamanho", f"{evento['blocos']} bloco(s), {evento['bytes']} bytes cifrados"),
             ("Situação", ROTULO_STATUS[evento["status"]]),
         ]
         for rotulo, valor in linhas:
             with ui.row().classes("gap-2 no-wrap w-full"):
-                ui.label(rotulo).classes("text-xs text-slate-500 w-40 shrink-0")
+                ui.label(rotulo).classes("text-xs text-slate-500 w-24 shrink-0")
                 ui.label(valor).classes("text-sm break-all")
         ui.label("Conteúdo guardado (blocos cifrados, em hexadecimal):").classes("text-xs text-slate-500 mt-2")
         blocos = [base64.b64decode(b).hex() for b in envelope["blocks"][:6]]
         ui.code("\n".join(encurtar(b, 72) for b in blocos) + ("\n…" if len(envelope["blocks"]) > 6 else ""), language=None).classes(
             "w-full text-xs"
         )
-        with ui.row().classes("items-center gap-1"):
+        with ui.row().classes("items-center gap-2 no-wrap rounded-xl bg-emerald-50 px-3 py-2"):
             ui.icon("visibility_off", color="positive")
-            ui.label("O texto não está aqui: o servidor não tem a privada de ninguém.").classes("text-sm text-green-800")
+            ui.label("O texto não está aqui: o servidor não tem a privada de ninguém.").classes("text-sm text-emerald-900")
 
 
 def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
@@ -241,10 +233,10 @@ def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
     with secao(
         "Visão do interceptador",
         "wifi_tethering_error",
-        "Alguém escutando a rede (ws:// sem TLS) captura o quadro inteiro — metadados inclusive.",
+        "Um espião na rede (ws:// sem TLS) captura o quadro inteiro, metadados inclusive.",
     ).classes("grow basis-96"):
         quadro = json.dumps({"type": "message", "envelope": evento["envelope"]}, ensure_ascii=False)
-        ui.code(encurtar(quadro, 420), language="json").classes("w-full text-xs")
+        ui.code(encurtar(quadro, 280), language="json").classes("w-full text-xs")
         bruto = base64.b64decode(envelope.blocks[0])
         ui.label("Tentando ler o 1º bloco como texto:").classes("text-xs text-slate-500")
         ui.label(bruto.decode("latin-1").translate({i: "·" for i in range(32)})[:64]).classes(
@@ -282,8 +274,8 @@ def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
                 "outline color=negative no-caps"
             ).mark("interceptador-quebrar")
         else:
-            with ui.row().classes("items-center gap-1"):
+            with ui.row().classes("items-center gap-2 no-wrap rounded-xl bg-emerald-50 px-3 py-2"):
                 ui.icon("verified_user", color="positive")
-                ui.label(
-                    "RSA-OAEP 2048: sem a privada, só fatorando um n de 617 dígitos — inviável (veja o Laboratório)."
-                ).classes("text-sm text-green-800")
+                ui.label("RSA-OAEP 2048: sem a privada, só fatorando um n de 617 dígitos — inviável.").classes(
+                    "text-sm text-emerald-900"
+                )

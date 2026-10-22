@@ -7,7 +7,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from shared.crypto import rsa_didatico, rsa_real
-from shared.crypto.blocos import MAX_TEXTO_BYTES, MensagemGrandeDemais
+from shared.crypto.blocos import MAX_TEXTO_CARACTERES, MensagemGrandeDemais
 from shared.crypto.envelope import (
     AssinaturaInvalida,
     CabecalhoInconsistente,
@@ -110,7 +110,7 @@ def test_modos_misturados_sao_recusados():
 
 def test_mensagem_grande_demais(usuarios):
     with pytest.raises(MensagemGrandeDemais):
-        montar_envelopes("x" * (MAX_TEXTO_BYTES + 1), "alice", usuarios["alice"], {"bob": usuarios["bob"].publica}, 1)
+        montar_envelopes("x" * (MAX_TEXTO_CARACTERES + 1), "alice", usuarios["alice"], {"bob": usuarios["bob"].publica}, 1)
 
 
 def test_rastreio_registra_as_etapas(usuarios):

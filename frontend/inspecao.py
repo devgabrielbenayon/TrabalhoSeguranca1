@@ -13,7 +13,7 @@ from shared.crypto.blocos import decodificar_conteudo
 from shared.crypto.chaves import ChavePrivada, ChavePublica
 from shared.crypto.envelope import ErroEnvelope, abrir_envelope
 from shared.crypto.rsa_didatico import PrivadaDidatica
-from shared.schemas import Envelope
+from shared.schemas import Envelope, EventoTransitoOut
 from shared.trace import TraceEvent, Tracer
 
 ETAPAS_ENVIO = ("codificacao", "cifragem", "assinatura")
@@ -29,8 +29,50 @@ class Experimento:
     erros: list[str] = field(default_factory=list)
 
 
+@dataclass
+class Percurso:
+    """Por onde andou o envelope de um destinatário, segundo o rastro do servidor."""
+
+    para: str
+    nos: list[str] = field(default_factory=list)  # na ordem; vazio = relay central (ou ainda sem caminho)
+    status: str = "a_caminho"  # a_caminho / entregue / offline / sem_rota
+    parado_em: str | None = None  # nó onde o envelope espera na fila
+    confirmado: bool = False  # o destinatário mandou o ack
+
+    @property
+    def caminho(self) -> list[str] | None:
+        """No formato do diagrama: None quando não há caminho entre os nós."""
+        return None if self.status == "sem_rota" else self.nos
+
+
 def eventos_da_mensagem(tracer: Tracer, message_id: str) -> list[TraceEvent]:
     return [e for e in tracer.eventos if e.message_id == message_id]
+
+
+def percurso(rede: list[EventoTransitoOut], para: str) -> Percurso:
+    """Vale a última tentativa: um envelope pode ficar na fila e sair depois por outro caminho.
+    Reentregas da fila do nó do destinatário não registram saltos de novo: o caminho anterior continua valendo."""
+    resultado = Percurso(para)
+    saltos: list[str] = []
+    for evento in rede:
+        entrada = evento.entrada if isinstance(evento.entrada, dict) else {}
+        if evento.etapa == "confirmado" and entrada.get("por") == para:
+            resultado.confirmado = True
+        if entrada.get("para") != para:
+            continue
+        if evento.etapa == "salto":
+            saltos.append(evento.ator)
+        elif evento.etapa in ("entregue", "fila"):
+            if saltos:
+                resultado.nos, saltos = saltos, []
+            if evento.etapa == "entregue":
+                resultado.status, resultado.parado_em = "entregue", None
+            else:
+                motivo = evento.saida.get("motivo") if isinstance(evento.saida, dict) else None
+                resultado.status, resultado.parado_em = motivo or "offline", evento.ator
+    if saltos:
+        resultado.nos = saltos
+    return resultado
 
 
 def refazer_recebimento(envelope: Envelope, privada: ChavePrivada, publica_remetente: ChavePublica) -> list[TraceEvent]:

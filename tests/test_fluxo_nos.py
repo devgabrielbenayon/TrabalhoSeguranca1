@@ -3,6 +3,7 @@
 import pytest
 from websockets.exceptions import InvalidStatus
 
+from frontend import inspecao
 from frontend.mensageiro import Mensageiro
 from frontend.observador import ClienteObservador
 from tests.conftest import esperar
@@ -23,10 +24,16 @@ async def test_sem_caminho_a_mensagem_espera_e_sai_quando_o_no_volta(aparelho):
     item = await alice.enviar(conversa.id, "quando der")
     assert (item.status, item.sem_rota, len(item.envelopes)) == ("enviada", {"bob"}, 2)  # bob + cópia
     assert conversa.id not in bob.conversas or not _textos(bob, conversa.id)
+    parado = inspecao.percurso(await alice.sessao.api.rastro(item.message_id), "bob")
+    assert (parado.status, parado.caminho, parado.parado_em) == ("sem_rota", None, "Manaus")
 
     await alice.sessao.api.status_servidor(nos["Recife"], True)
     await esperar(lambda: conversa.id in bob.conversas and _textos(bob, conversa.id) == [("alice", "quando der", "verificada")])
     await esperar(lambda: item.status == "entregue" and not item.sem_rota)
+    entregue = inspecao.percurso(await alice.sessao.api.rastro(item.message_id), "bob")
+    assert (entregue.status, entregue.nos, entregue.parado_em, entregue.confirmado) == (
+        "entregue", ["Manaus", "Recife", "São Paulo"], None, True
+    )
     recebido = bob.conversas[conversa.id].ordenadas()[0]
     assert [e.to for e in recebido.envelopes] == ["bob"]  # o Inspetor de Bob tem o envelope que chegou
 

@@ -1,7 +1,9 @@
-"""Inspetor (RF14): o raio-X de uma mensagem neste aparelho — cada etapa do RSA com os números reais.
+"""Inspetor (RF14): uma mensagem passo a passo neste aparelho — cada etapa do RSA com os números reais.
 
-Envio: texto → bytes UTF-8 → blocos → m → mᵉ mod n → c → assinatura. Rede: os saltos pelos nós.
-Recebimento: verificação → cᵈ mod n → bytes → texto. O rastro é local (tem texto claro e d): não sai daqui.
+A jornada tem três fases: no aparelho de quem envia (texto → bytes → mᵉ mod n → assinatura), na rede
+(os nós) e no aparelho de quem recebe (verificação → cᵈ mod n → texto). Cada passo mostra um resumo;
+os números completos (tabelas, square-and-multiply) ficam ao abrir o passo. O rastro é local (tem
+texto claro e d): não sai daqui.
 """
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from dataclasses import dataclass
+from typing import Callable
 
 import httpx
 from fastapi.responses import RedirectResponse
@@ -19,76 +22,77 @@ from frontend.api_client import ErroApi
 from frontend.keystore import ChaveNaoEncontrada
 from frontend.key_cache import ChaveSuspeita
 from frontend.mensageiro import ConversaLocal, ItemMensagem, Mensageiro
-from frontend.pages.layout import conectar, encurtar, hora, moldura, secao, selo_modo, titulo_pagina
+from frontend.pages.caminho import trilha_percurso
+from frontend.pages.layout import (
+    TONS,
+    avatar,
+    cartao,
+    conectar,
+    encurtar,
+    hora,
+    item_mensagem,
+    mensagens_com_envelope,
+    moldura,
+    pilula,
+    secao,
+    selo_modo,
+    titulo_pagina,
+    vazio,
+)
 from frontend.sessao import Sessao
 from shared.crypto import rsa_didatico, rsa_real
 from shared.crypto.chaves import ChavePrivada, ChavePublica
 from shared.schemas import Envelope, EventoTransitoOut
 from shared.trace import TraceEvent
 
-MAX_TABELAS_SM = 3  # tabelas square-and-multiply por etapa (os demais blocos repetem a mesma conta)
-NOME_ETAPA = {
-    "codificacao": "Codificação",
-    "cifragem": "Cifragem",
-    "assinatura": "Assinatura",
-    "verificacao": "Verificação",
-    "decifragem": "Decifragem",
-    "decodificacao": "Decodificação",
-}
-ICONE_ETAPA = {
-    "codificacao": "text_fields", "cifragem": "lock", "assinatura": "draw", "verificacao": "verified",
-    "decifragem": "lock_open", "decodificacao": "chat",
+MAX_TABELAS_SM = 1  # tabela square-and-multiply só do 1º bloco (os demais repetem a mesma conta)
+CONTROLE = {i: "·" for i in (*range(32), *range(127, 160))}  # bytes sem caractere visível em latin-1
+ICONE_REDE = {"recebido": "move_to_inbox", "salto": "alt_route", "entregue": "outbox", "fila": "schedule", "confirmado": "done_all"}
+NOME_EVENTO = {"recebido": "recebido", "salto": "repassado", "entregue": "entregue", "fila": "na fila", "confirmado": "confirmado"}
+# status da mensagem → (texto, tom)
+SITUACAO = {
+    "verificada": ("assinatura verificada", "verde"),
+    "entregue": ("entregue", "verde"),
+    "enviada": ("enviada", "cinza"),
+    "enviando": ("enviando", "cinza"),
+    "rejeitada": ("rejeitada", "vermelho"),
+    "erro": ("não enviada", "vermelho"),
 }
 
 
 def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
     @ui.page("/inspetor")
-    async def pagina(mensagem: str | None = None):
+    async def pagina(mensagem: str | None = None, para: str | None = None):
         if not sessao.logado:
             return RedirectResponse("/login")
         await conectar(mensageiro)
-        itens = sorted(
-            ((c, i) for c in mensageiro.conversas.values() for i in c.mensagens.values() if i.envelopes),
-            key=lambda ci: ci[1].sent_at,
-            reverse=True,
-        )
+        itens = mensagens_com_envelope(mensageiro)
         escolhido = next((ci for ci in itens if ci[1].message_id == mensagem), itens[0] if itens else None)
         detalhe = await _carregar(sessao, mensageiro, *escolhido) if escolhido is not None else None
 
         with moldura(sessao, mensageiro, "/inspetor") as conteudo:
             conteudo.classes("max-w-none")
-            titulo_pagina(
-                "Inspetor",
-                "O raio-X de uma mensagem: cada etapa do RSA com os números reais. O rastro fica só neste aparelho.",
-                "biotech",
-            )
+            titulo_pagina("Inspetor", "Uma mensagem passo a passo: do texto ao cifrado e de volta, com os números reais.", "biotech")
             with ui.row().classes("w-full gap-4 no-wrap items-start max-lg:flex-wrap"):
-                with ui.card().classes("w-80 shrink-0 shadow-sm max-lg:w-full"):
-                    ui.label("Mensagens").classes("text-lg font-bold")
+                with cartao("w-80 shrink-0 max-lg:w-full gap-1 p-3"):
+                    ui.label("Mensagens").classes("text-base font-bold text-slate-800 px-1")
                     if not itens:
-                        ui.label("Nenhuma mensagem ainda. Envie uma pelo chat e volte aqui.").classes("text-sm text-slate-500")
-                    with ui.scroll_area().style("height: calc(100vh - 230px)").classes("w-full"):
+                        ui.label("Nenhuma mensagem ainda.").classes("text-sm text-slate-500 px-1")
+                    with ui.scroll_area().style("height: calc(100vh - 250px)").classes("w-full"):
                         for conversa, item in itens:
-                            _item_lista(mensageiro, conversa, item, escolhido is not None and item is escolhido[1])
+                            item_mensagem(
+                                conversa, item, escolhido is not None and item is escolhido[1],
+                                lambda m=item.message_id: ui.navigate.to(f"/inspetor?mensagem={m}"),
+                            )
                 with ui.column().classes("grow gap-4 min-w-0"):
-                    if detalhe is not None:
-                        _mostrar_detalhe(detalhe, mensageiro.eu)
+                    if detalhe is None:
+                        with cartao("w-full"):
+                            vazio("biotech", "Envie uma mensagem pelo chat e volte aqui para ver cada passo da criptografia.")
+                    else:
+                        _mostrar_detalhe(detalhe, mensageiro.eu, para)
 
 
-def _item_lista(mensageiro: Mensageiro, conversa: ConversaLocal, item: ItemMensagem, selecionado: bool) -> None:
-    destino = ", ".join(p for p in conversa.participantes if p != item.remetente)
-    classes = "w-full rounded p-2 gap-2 no-wrap cursor-pointer " + ("bg-teal-50 ring-1 ring-teal-300" if selecionado else "hover:bg-slate-50")
-    with ui.row().classes(classes).on("click", lambda: ui.navigate.to(f"/inspetor?mensagem={item.message_id}")):
-        ui.icon("call_made" if item.propria else "call_received", color="primary" if item.propria else "info").classes("mt-1")
-        with ui.column().classes("gap-0 min-w-0 grow"):
-            ui.label(("você" if item.propria else f"@{item.remetente}") + f" → {destino}").classes("text-sm font-medium truncate")
-            ui.label(encurtar(item.texto if item.texto is not None else "[descartada]", 40)).classes("text-xs text-slate-600")
-            with ui.row().classes("gap-1 items-center"):
-                selo_modo(conversa.modo)
-                ui.label(hora(item.sent_at)).classes("text-xs text-slate-400")
-
-
-# ---------------------------------------------------------------- detalhe de uma mensagem
+# ---------------------------------------------------------------- dados de uma mensagem
 
 
 @dataclass
@@ -126,39 +130,6 @@ async def _carregar(sessao: Sessao, mensageiro: Mensageiro, conversa: ConversaLo
     return Detalhe(conversa, item, envio, recebimento, rede, para_mim, privada, publica_remetente)
 
 
-def _mostrar_detalhe(d: Detalhe, eu: str) -> None:
-    _cabecalho(d.conversa, d.item, eu)
-    _trilha(d.item, d.envio, d.recebimento, d.rede, eu)
-    _visao_dividida(d.item, d.para_mim or d.item.envelopes[0])
-    if d.envio:
-        _etapas_envio(d.envio, eu)
-    _rede(d.rede)
-    if d.recebimento:
-        rotulo = "Recebimento (neste aparelho)" if not d.item.propria else "Recebimento da sua cópia (o destinatário faz o mesmo no aparelho dele)"
-        _etapas_recebimento(d.recebimento, rotulo)
-    _linha_do_tempo(d.envio + d.recebimento)
-    if d.para_mim is not None and d.privada is not None:
-        _experimentos(d.para_mim, d.privada, d.publica_remetente)
-
-
-def _cabecalho(conversa: ConversaLocal, item: ItemMensagem, eu: str) -> None:
-    with ui.card().classes("w-full shadow-sm"):
-        with ui.row().classes("items-center gap-3 w-full"):
-            ui.icon("call_made" if item.propria else "call_received", color="primary").classes("text-3xl")
-            with ui.column().classes("gap-0 grow min-w-0"):
-                destino = ", ".join(p for p in conversa.participantes if p != item.remetente)
-                ui.label(f"{'Você' if item.propria else '@' + item.remetente} → {destino}").classes("text-lg font-bold")
-                ui.label(f"message_id {item.message_id} · enviada {item.sent_at} · assinada com {item.key_id}").classes(
-                    "text-xs text-slate-500 font-mono break-all"
-                )
-            selo_modo(conversa.modo)
-            ui.badge(item.status, color="positive" if item.status in ("verificada", "entregue", "enviada") else "negative")
-        if item.texto is not None:
-            ui.label(f"“{item.texto}”").classes("text-base italic text-slate-800")
-        if item.erro:
-            ui.label(item.erro).classes("text-sm text-red-700")
-
-
 def _primeiro(eventos: list[TraceEvent], etapa: str, para: str | None = None) -> TraceEvent | None:
     for e in eventos:
         if e.etapa == etapa and (para is None or (isinstance(e.entrada, dict) and e.entrada.get("para") == para)):
@@ -166,128 +137,313 @@ def _primeiro(eventos: list[TraceEvent], etapa: str, para: str | None = None) ->
     return None
 
 
-def _trilha(item: ItemMensagem, envio: list[TraceEvent], recebimento: list[TraceEvent], rede: list, eu: str) -> None:
-    """A trilha de cartões do plano (seção 10): um valor real em cada etapa."""
-    alvo = next((e.to for e in item.envelopes if e.to != item.remetente), None)
-    cod = _primeiro(envio, "codificacao")
-    cif = _primeiro(envio, "cifragem", alvo)
-    ass = _primeiro(envio, "assinatura", alvo)
-    ver = _primeiro(recebimento, "verificacao")
-    dec = _primeiro(recebimento, "decifragem")
-    txt = _primeiro(recebimento, "decodificacao")
+# ---------------------------------------------------------------- tela de uma mensagem
 
-    cartoes: list[tuple[str, str, str]] = []
+
+def _mostrar_detalhe(d: Detalhe, eu: str, para: str | None) -> None:
+    alvos = [p for p in d.conversa.participantes if p != d.item.remetente] or [eu]
+    estado = {"alvo": para if para in alvos else (eu if eu in alvos else alvos[0])}
+    _cabecalho(d)
+
+    @ui.refreshable
+    def corpo() -> None:
+        alvo = estado["alvo"]
+        envelope = next((e for e in d.item.envelopes if e.to == alvo), d.para_mim or d.item.envelopes[0])
+        _quem_ve(d.item, envelope)
+        if len(alvos) > 1 and d.item.propria:
+            with ui.row().classes("items-center gap-2"):
+                ui.label("Um envelope por destinatário. Ver o de:").classes("text-sm text-slate-600")
+                ui.toggle({p: f"@{p}" for p in alvos}, value=alvo, on_change=lambda e: (estado.update(alvo=e.value), corpo.refresh())).props(
+                    "dense no-caps unelevated toggle-color=primary"
+                )
+        _jornada(d, alvo, eu)
+
+    corpo()
+    if d.para_mim is not None and d.privada is not None:
+        _experimentos(d.para_mim, d.privada, d.publica_remetente, d.item.propria)
+
+
+def _cabecalho(d: Detalhe) -> None:
+    item = d.item
+    destinos = [p for p in d.conversa.participantes if p != item.remetente]
+    with cartao("w-full p-5 gap-3"):
+        with ui.row().classes("items-center gap-2 w-full"):
+            if item.propria:
+                pilula("enviada por você", "azul", "north_east")
+            else:
+                pilula(f"recebida de @{item.remetente}", "azul", "south_west")
+            selo_modo(d.conversa.modo)
+            texto, tom = SITUACAO.get(item.status, (item.status, "cinza"))
+            pilula(texto, tom)
+            ui.space()
+            ui.label(hora(item.sent_at)).classes("text-xs text-slate-400")
+            ui.button("Ver o caminho", icon="route", on_click=lambda: ui.navigate.to(f"/caminho?mensagem={item.message_id}")).props(
+                "flat dense no-caps color=primary"
+            )
+        ui.label(f"“{item.texto}”" if item.texto is not None else "[não foi possível ler esta mensagem]").classes(
+            "text-xl text-slate-800 break-words " + ("" if item.texto is not None else "text-red-700 italic")
+        )
+        with ui.row().classes("items-center gap-2"):
+            avatar(item.remetente, tamanho=7)
+            ui.label(f"@{item.remetente}").classes("text-sm font-medium")
+            ui.icon("arrow_forward", color="grey-6")
+            for p in destinos:
+                avatar(p, tamanho=7)
+                ui.label(f"@{p}").classes("text-sm font-medium")
+        if item.erro:
+            ui.label(item.erro).classes("text-sm text-red-700")
+
+
+def _quem_ve(item: ItemMensagem, envelope: Envelope) -> None:
+    """A mesma mensagem sob três olhares: o aparelho, o servidor e alguém escutando a rede."""
+    bruto = b"".join(base64.b64decode(b) for b in envelope.blocks[:12])[:24]  # no didático cada bloco tem poucos bytes
+    with ui.row().classes("w-full gap-4 items-stretch max-lg:flex-wrap"):
+        with _olhar("Você", "smartphone", "verde", "lê o texto: tem a chave privada"):
+            ui.label(item.texto if item.texto is not None else "[não foi possível decifrar]").classes(
+                "text-base font-semibold break-words " + ("text-emerald-800" if item.texto else "text-red-700")
+            )
+        with _olhar("O servidor", "dns", "cinza", "sabe quem fala com quem, mas não lê"):
+            ui.label(f"@{envelope.from_} → @{envelope.to} · {len(envelope.blocks)} bloco(s)").classes("text-sm")
+            ui.label(encurtar(bruto.hex(), 44)).classes("font-mono text-xs text-slate-500 break-all")
+        with _olhar("Um espião na rede", "wifi_tethering_error", "vermelho", "só vê bytes embaralhados"):
+            ui.label(bruto.decode("latin-1").translate(CONTROLE)).classes(
+                "font-mono text-sm text-slate-600 break-all"
+            )
+
+
+def _olhar(titulo: str, icone: str, tom: str, legenda: str) -> ui.column:
+    with cartao("grow basis-56 p-4 gap-2"):
+        with ui.row().classes("items-center gap-2 no-wrap"):
+            with ui.element("div").classes(f"rounded-lg p-1 flex ring-1 {TONS[tom]}"):
+                ui.icon(icone).classes("text-base")
+            ui.label(titulo).classes("text-sm font-bold text-slate-800")
+        corpo = ui.column().classes("gap-1 w-full")
+        ui.label(legenda).classes("text-xs text-slate-500 mt-auto")
+    return corpo
+
+
+# ---------------------------------------------------------------- a jornada em 7 passos
+
+
+def _jornada(d: Detalhe, alvo: str, eu: str) -> None:
+    item = d.item
+    remetente = item.remetente
+
+    with _fase(f"No aparelho de @{remetente}" + (" (você)" if item.propria else ""), "smartphone", "Cifrar e assinar"):
+        _passos_envio(d, alvo)
+    _seta()
+    with _fase("Na rede", "hub", "O servidor só repassa"):
+        _passo_rede(d, alvo)
+    _seta()
+    with _fase(f"No aparelho de @{alvo}" + (" (você)" if alvo == eu else ""), "smartphone", "Conferir e decifrar"):
+        if item.propria:
+            _recebimento_remoto(d, alvo)
+        else:
+            _passos_recebimento(d.recebimento, remetente, alvo)
+
+
+def _passos_envio(d: Detalhe, alvo: str) -> None:
+    remetente = d.item.remetente
+    cod = _primeiro(d.envio, "codificacao")
+    cif = _primeiro(d.envio, "cifragem", alvo)
+    ass = _primeiro(d.envio, "assinatura", alvo)
+    if not (cod or cif or ass):
+        envelope = next((e for e in d.item.envelopes if e.to == alvo), d.para_mim)
+        if d.item.propria:
+            _nota("Enviada antes desta sessão: os cálculos do envio não ficaram guardados neste aparelho.")
+        elif envelope is not None:
+            _nota(
+                f"Estes cálculos aconteceram no aparelho de @{remetente}: ele cifrou com a sua chave pública "
+                f"({envelope.to_key_id}) e assinou com a privada dele ({envelope.from_key_id}). "
+                f"Chegaram aqui {len(envelope.blocks)} bloco(s) cifrado(s)."
+            )
+        return
     if cod:
-        cartoes += [
-            ("Texto", "text_fields", encurtar(str(cod.entrada), 30)),
-            ("Bytes UTF-8", "data_object", f"{cod.detalhes.get('bytes')} bytes (com cabeçalho interno)"),
-        ]
+        _passo(
+            1, "text_fields", "Texto vira bytes",
+            "O texto, junto com o remetente e o id da mensagem, é codificado em UTF-8.",
+            f"{cod.detalhes.get('bytes')} bytes", lambda: _detalhe_codificacao(cod), cod.duracao_ms,
+        )
     if cif:
         blocos = cif.detalhes.get("blocos", [])
-        cartoes.append(("Blocos", "view_module", f"{len(blocos)} × até {cif.detalhes.get('tamanho_bloco')} bytes"))
         if cif.detalhes.get("modo") == "didatico" and blocos:
-            b = blocos[0]
-            cartoes += [
-                ("Inteiro m", "pin", f"m₁ = {b['m']}"),
-                ("mᵉ mod n", "functions", f"{b['m']}^{cif.detalhes['e']} mod {cif.detalhes['n']}"),
-                ("c", "lock", f"c₁ = {b['c']}"),
-            ]
+            valor = f"c₁ = {blocos[0]['m']}^{cif.detalhes['e']} mod {cif.detalhes['n']} = {blocos[0]['c']}"
         else:
-            cartoes.append(("RSA-OAEP", "lock", f"cada bloco → {_bytes_b64(cif.saida[0]) if cif.saida else '?'} bytes"))
+            valor = f"{len(blocos)} bloco(s) RSA-OAEP"
+        _passo(
+            2, "lock", f"Cifrar com a chave pública de @{alvo}",
+            f"Cada pedaço de bytes vira um número m e é cifrado: só a privada de @{alvo} desfaz.",
+            valor, lambda: _detalhe_cifragem(cif), cif.duracao_ms,
+        )
     if ass:
-        if "h" in ass.detalhes:
-            cartoes.append(("Assinatura", "draw", f"s = {ass.detalhes['h']}^d mod n"))
-        else:
-            cartoes.append(("Assinatura", "draw", "RSA-PSS SHA-256"))
-    saltos = [r.ator for r in rede if r.etapa == "salto" and (not alvo or r.entrada.get("para") == alvo)]
-    if rede:
-        cartoes.append(("Rede", "hub", " › ".join(dict.fromkeys(saltos)) if saltos else "relay central"))
+        valor = f"s = h^{ass.detalhes['d']} mod {ass.detalhes['n']}" if "h" in ass.detalhes else "RSA-PSS · SHA-256"
+        _passo(
+            3, "draw", f"Assinar com a chave privada de @{remetente}",
+            "Prova que veio de quem diz ter enviado e que nada foi alterado no caminho.",
+            valor, lambda: _detalhe_assinatura(ass), ass.duracao_ms,
+        )
+
+
+def _passo_rede(d: Detalhe, alvo: str) -> None:
+    if not d.rede:
+        _passo(4, "hub", "Atravessa a rede", "O servidor não registrou o trânsito desta mensagem.", "sem registro")
+        return
+    p = inspecao.percurso(d.rede, alvo)
+    if p.status == "sem_rota":
+        valor, tom = f"parada em {p.parado_em}: sem caminho", "ambar"
+    else:
+        valor, tom = (" › ".join(p.nos) if p.nos else "relay central"), ("ambar" if p.status == "offline" else "cinza")
+    _passo(
+        4, "hub", "Atravessa os nós da rede",
+        "Cada nó só repassa o envelope cifrado: nenhum deles tem chave privada.",
+        valor, lambda: _detalhe_rede(d, p), tom_valor=tom,
+    )
+
+
+def _recebimento_remoto(d: Detalhe, alvo: str) -> None:
+    """Mensagem enviada daqui: quem decifra é o aparelho do destinatário, com a privada que só ele tem."""
+    p = inspecao.percurso(d.rede, alvo)
+    if p.confirmado:
+        situacao, tom = f"@{alvo} recebeu e confirmou", "verde"
+    elif p.status == "entregue":
+        situacao, tom = f"entregue a @{alvo}", "verde"
+    elif p.status in ("offline", "sem_rota"):
+        situacao, tom = "esperando na fila", "ambar"
+    else:
+        situacao, tom = "a caminho", "azul"
+    with ui.row().classes("items-center gap-3 w-full px-3 py-2"):
+        pilula(situacao, tom, "mark_email_read" if tom == "verde" else "schedule")
+        ui.label(
+            f"@{alvo} confere a assinatura com a sua chave pública e decifra com a privada dele (passos 5 a 7). "
+            f"Só o aparelho de @{alvo} consegue: abra o Inspetor lá para ver."
+        ).classes("text-sm text-slate-600 grow basis-64")
+    if d.recebimento:
+        with ui.expansion("Ver os passos 5 a 7 com a sua cópia", icon="content_copy").classes("w-full text-sm text-slate-600"):
+            _nota("Você também recebe uma cópia cifrada com a SUA chave pública: o processo é o mesmo.")
+            _passos_recebimento(d.recebimento, d.item.remetente, d.item.remetente)
+
+
+def _passos_recebimento(recebimento: list[TraceEvent], remetente: str, alvo: str) -> None:
+    if not recebimento:
+        _nota("Não foi possível refazer: a chave privada desta mensagem não está neste aparelho.")
+        return
+    ver = _primeiro(recebimento, "verificacao")
     if ver:
-        cartoes.append(("Verificação", "verified", "✓ confere" if ver.saida else "✗ não confere"))
+        _passo(
+            5, "verified", f"Conferir a assinatura com a chave pública de @{remetente}",
+            "Se um único bit mudasse no caminho, a conta não bateria e a mensagem seria descartada.",
+            "✓ confere" if ver.saida else "✗ não confere", lambda: _detalhe_verificacao(ver), ver.duracao_ms,
+            tom_valor="verde" if ver.saida else "vermelho",
+        )
+    dec = _primeiro(recebimento, "decifragem")
     if dec:
         blocos = dec.detalhes.get("blocos", [])
         if "d" in dec.detalhes and blocos:
-            cartoes.append(("cᵈ mod n", "lock_open", f"{blocos[0]['c']}^d mod {dec.detalhes['n']} = {blocos[0]['m']}"))
+            valor = f"m₁ = {blocos[0]['c']}^{dec.detalhes['d']} mod {dec.detalhes['n']} = {blocos[0]['m']}"
         else:
-            cartoes.append(("Decifragem", "lock_open", f"{len(blocos)} bloco(s) OAEP"))
+            valor = f"{len(blocos)} bloco(s) RSA-OAEP"
+        _passo(
+            6, "lock_open", f"Decifrar com a chave privada de @{alvo}",
+            "A privada nunca saiu deste aparelho: é a única que desfaz a cifra.",
+            valor, lambda: _detalhe_decifragem(dec), dec.duracao_ms,
+        )
+    txt = _primeiro(recebimento, "decodificacao")
     if txt:
-        cartoes.append(("Texto", "chat", encurtar(str(txt.saida), 30)))
-
-    with secao("Raio-X", "biotech", "Cada cartão é uma etapa, com o valor real desta mensagem (detalhes abaixo)."):
-        with ui.row().classes("w-full gap-1 items-stretch flex-wrap"):
-            for i, (titulo, icone, valor) in enumerate(cartoes):
-                with ui.card().classes("w-40 bg-slate-50 shadow-none border border-slate-200 p-2 gap-1"):
-                    with ui.row().classes("items-center gap-1 no-wrap"):
-                        ui.icon(icone, color="primary").classes("text-base")
-                        ui.label(titulo).classes("text-xs font-bold text-slate-700")
-                    ui.label(valor).classes("text-xs font-mono break-all text-slate-800")
-                if i < len(cartoes) - 1:
-                    ui.icon("arrow_forward", color="grey-6").classes("self-center")
+        _passo(
+            7, "chat", "Bytes voltam a ser texto",
+            "O remetente e o id escondidos dentro da cifra são conferidos com o envelope.",
+            f"“{encurtar(str(txt.saida), 40)}”" if txt.saida else "ilegível", lambda: _detalhe_decodificacao(txt), txt.duracao_ms,
+            tom_valor="verde" if txt.saida else "vermelho",
+        )
 
 
-def _visao_dividida(item: ItemMensagem, envelope: Envelope) -> None:
-    """A mesma mensagem sob três perspectivas."""
-    with ui.row().classes("w-full gap-4 items-stretch max-lg:flex-wrap"):
-        with secao("Neste aparelho", "smartphone").classes("grow basis-64"):
-            ui.label(item.texto if item.texto is not None else "[não foi possível decifrar]").classes(
-                "text-base " + ("text-green-800 font-bold" if item.texto else "text-red-700")
+def _fase(titulo: str, icone: str, subtitulo: str) -> ui.column:
+    with cartao("w-full p-0 gap-0 overflow-hidden"):
+        with ui.row().classes("w-full items-center gap-2 no-wrap px-4 py-2 bg-slate-50 border-b border-slate-200"):
+            ui.icon(icone, color="primary").classes("text-lg")
+            ui.label(titulo).classes("font-bold text-slate-800")
+            ui.label(subtitulo).classes("rotulo ml-auto")
+        corpo = ui.column().classes("w-full gap-0 p-2")
+    return corpo
+
+
+def _seta() -> None:
+    ui.icon("south").classes("self-center text-2xl text-slate-300 -my-3")
+
+
+def _nota(texto: str) -> None:
+    with ui.row().classes("items-start gap-2 no-wrap px-3 py-2"):
+        ui.icon("info", color="grey-6").classes("text-base mt-0.5")
+        ui.label(texto).classes("text-sm text-slate-600")
+
+
+def _passo(
+    numero: int,
+    icone: str,
+    titulo: str,
+    explicacao: str,
+    valor: str,
+    detalhes: Callable[[], None] | None = None,
+    ms: float | None = None,
+    tom_valor: str = "cinza",
+) -> None:
+    """Um passo: resumo sempre visível; os números completos aparecem ao abrir."""
+    passo = ui.expansion().classes("w-full passo")
+    with passo.add_slot("header"):
+        with ui.row().classes("w-full items-center gap-3 no-wrap"):
+            ui.label(str(numero)).classes(
+                "rounded-full bg-teal-700 text-white w-7 h-7 flex items-center justify-center text-sm font-bold shrink-0"
             )
-            ui.label(f"decifrado com a privada {envelope.to_key_id}, que só existe aqui").classes("text-xs text-slate-500")
-        with secao("No servidor", "dns").classes("grow basis-64"):
-            ui.label(f"de @{envelope.from_} para @{envelope.to} · {len(envelope.blocks)} bloco(s)").classes("text-sm")
-            ui.label(encurtar(base64.b64decode(envelope.blocks[0]).hex(), 60)).classes("font-mono text-xs break-all text-slate-700")
-            ui.label("vê quem fala com quem e quando, mas não o texto").classes("text-xs text-slate-500")
-        with secao("Na rede", "wifi_tethering_error").classes("grow basis-64"):
-            ui.label(base64.b64decode(envelope.blocks[0]).decode("latin-1").translate({i: "·" for i in range(32)})[:48]).classes(
-                "font-mono text-sm break-all text-slate-700"
+            ui.icon(icone, color="primary").classes("text-xl shrink-0")
+            with ui.column().classes("gap-0 grow min-w-0"):
+                ui.label(titulo).classes("font-semibold text-slate-800")
+                ui.label(explicacao).classes("text-xs text-slate-500")
+            quebra = "break-words" if len(valor) > 24 else "whitespace-nowrap shrink-0"
+            ui.label(valor).classes(f"font-mono text-xs rounded-lg px-2 py-1 ring-1 {quebra} {TONS[tom_valor]}").style(
+                "max-width: 42%"
             )
-            ui.label("um interceptador captura bytes sem sentido (e os metadados)").classes("text-xs text-slate-500")
+            if ms is not None:
+                ui.label(f"{ms:.1f} ms").classes("text-[11px] text-slate-400 w-14 text-right shrink-0")
+    with passo:
+        if detalhes is not None:
+            with ui.column().classes("w-full gap-2 pl-12 pr-2 pb-3"):
+                detalhes()
+    if detalhes is None:
+        passo.props("hide-expand-icon")
 
 
-def _etapas_envio(envio: list[TraceEvent], eu: str) -> None:
-    with secao("Envio (neste aparelho)", "outbox", "Um envelope por destinatário, mais a cópia para você. Cada um cifrado com a pública de quem vai ler e assinado com a sua privada."):
-        cod = _primeiro(envio, "codificacao")
-        if cod:
-            with ui.expansion("Codificação: texto → JSON com cabeçalho interno → bytes UTF-8", icon="text_fields").classes("w-full"):
-                ui.code(cod.detalhes.get("conteudo", ""), language="json").classes("w-full text-xs")
-                ui.label(f"{cod.detalhes.get('bytes')} bytes: {encurtar(str(cod.saida), 160)}").classes("font-mono text-xs break-all")
-                ui.label("O cabeçalho (from, message_id) vai cifrado: o destinatário confere com o envelope externo.").classes(
-                    "text-xs text-slate-500"
-                )
-        for cif in (e for e in envio if e.etapa == "cifragem"):
-            para = cif.entrada.get("para")
-            titulo = f"Cifragem para @{para}" + (" (sua cópia)" if para == eu else "") + f" — chave {cif.entrada.get('key_id')}"
-            with ui.expansion(titulo, icon="lock").classes("w-full"):
-                _detalhe_cifragem(cif)
-        for ass in (e for e in envio if e.etapa == "assinatura"):
-            para = ass.entrada.get("para")
-            with ui.expansion(f"Assinatura do envelope de @{para}" + (" (sua cópia)" if para == eu else ""), icon="draw").classes("w-full"):
-                _detalhe_assinatura(ass)
+# ---------------------------------------------------------------- detalhes de cada passo
+
+
+def _detalhe_codificacao(cod: TraceEvent) -> None:
+    ui.label("Conteúdo cifrado (o cabeçalho vai junto, protegido pela cifra):").classes("text-xs text-slate-500")
+    ui.code(cod.detalhes.get("conteudo", ""), language="json").classes("w-full text-xs")
+    ui.label(f"{cod.detalhes.get('bytes')} bytes em hexadecimal: {encurtar(str(cod.saida), 120)}").classes(
+        "font-mono text-xs break-all text-slate-600"
+    )
 
 
 def _detalhe_cifragem(cif: TraceEvent) -> None:
     d = cif.detalhes
     blocos = d.get("blocos", [])
     if d.get("modo") == "didatico":
-        ui.label(f"c = mᵉ mod n   com e = {d['e']} e n = {d['n']} · blocos de {d['tamanho_bloco']} byte(s), completados com zeros").classes(
-            "font-mono text-sm"
+        _formula(f"c = mᵉ mod n    com e = {d['e']} e n = {d['n']}")
+        ui.label(f"Blocos de {d['tamanho_bloco']} byte(s): cada um vira o inteiro m (o último é completado com zeros).").classes(
+            "text-xs text-slate-500"
         )
-        _tabela(
-            ["#", "bloco (hex)", "m", "c = mᵉ mod n"],
-            [[i + 1, b["bloco_hex"], b["m"], b["c"]] for i, b in enumerate(blocos)],
-        )
+        _tabela(["#", "bloco (hex)", "m", "c = mᵉ mod n"], [[i + 1, b["bloco_hex"], b["m"], b["c"]] for i, b in enumerate(blocos)])
         _repeticoes(blocos)
         for i, b in enumerate(blocos[:MAX_TABELAS_SM]):
-            _square_and_multiply(f"Bloco {i + 1}: {b['m']}^{d['e']} mod {d['n']} = {b['c']}", b.get("passos") or [], d["e"])
+            _square_and_multiply(f"bloco {i + 1}: {b['m']}^{d['e']} mod {d['n']} = {b['c']}", b.get("passos") or [], d["e"])
     else:
-        ui.label(
-            f"RSA-OAEP com SHA-256 · e = {d.get('e')}, n de {d.get('bits_n')} bits · até {d.get('tamanho_bloco')} bytes por bloco"
-        ).classes("text-sm")
+        _formula(f"RSA-OAEP com SHA-256 · e = {d.get('e')} · n de {d.get('bits_n')} bits · até {d.get('tamanho_bloco')} bytes por bloco")
         _tabela(
             ["#", "bloco (hex)", "cifrado (início)"],
             [[i + 1, encurtar(b["bloco_hex"], 40), encurtar(hex(b["c"])[2:], 40)] for i, b in enumerate(blocos)],
         )
-        ui.label("O OAEP é aleatorizado: o mesmo bloco cifrado duas vezes dá resultados diferentes.").classes("text-xs text-slate-500")
+        ui.label("O OAEP mistura bytes aleatórios: o mesmo texto cifrado duas vezes dá resultados diferentes.").classes(
+            "text-xs text-slate-500"
+        )
 
 
 def _repeticoes(blocos: list[dict]) -> None:
@@ -298,110 +454,91 @@ def _repeticoes(blocos: list[dict]) -> None:
     repetidos = {m: n for m, n in vistos.items() if n > 1}
     if repetidos:
         exemplos = ", ".join(f"m={m} ×{n}" for m, n in list(repetidos.items())[:4])
-        ui.label(
-            f"⚠ Padrão visível: {len(repetidos)} valor(es) de bloco se repetem ({exemplos}) e geram o MESMO c. "
-            "Sem padding, quem olha o cifrado vê a repetição."
-        ).classes("text-sm text-amber-800 bg-amber-50 rounded p-2")
+        with ui.row().classes("items-start gap-2 no-wrap rounded-lg bg-amber-50 px-3 py-2"):
+            ui.icon("warning", color="warning").classes("text-base mt-0.5")
+            ui.label(
+                f"Padrão visível: {len(repetidos)} valor(es) de bloco se repetem ({exemplos}) e geram o MESMO c. "
+                "Sem padding, quem olha o cifrado vê a repetição."
+            ).classes("text-sm text-amber-900")
 
 
 def _detalhe_assinatura(ass: TraceEvent) -> None:
     d = ass.detalhes
     if "h" in d:
-        ui.label(f"h = SHA-256(dados assinados) mod n = {d['h']}").classes("font-mono text-sm")
-        ui.label(f"s = hᵈ mod n = {d['h']}^{d['d']} mod {d['n']} = {_int_b64(ass.saida)}").classes("font-mono text-sm")
-        ui.label("Com n pequeno o hash é truncado (mod n): limitação proposital do modo didático.").classes("text-xs text-slate-500")
+        _formula(f"h = SHA-256(envelope) mod n = {d['h']}")
+        _formula(f"s = hᵈ mod n = {d['h']}^{d['d']} mod {d['n']} = {_int_b64(ass.saida)}")
+        ui.label("Com n pequeno o hash é reduzido mod n: limitação proposital do modo didático.").classes("text-xs text-slate-500")
         _square_and_multiply(f"{d['h']}^{d['d']} mod {d['n']}", d.get("passos") or [], d["d"])
     else:
-        ui.label(f"RSA-PSS com SHA-256 (n de {d.get('bits_n')} bits) · assinatura: {encurtar(str(ass.saida), 64)}").classes(
-            "font-mono text-xs break-all"
-        )
-    ui.label("Dados assinados (todos os campos do envelope menos a assinatura, em JSON canônico):").classes("text-xs text-slate-500")
-    ui.code(encurtar(d.get("dados_assinados", ""), 600), language="json").classes("w-full text-xs")
+        _formula(f"RSA-PSS com SHA-256 (n de {d.get('bits_n')} bits)")
+        ui.label(f"assinatura: {encurtar(str(ass.saida), 64)}").classes("font-mono text-xs break-all text-slate-600")
+    with ui.expansion("O que é assinado", icon="data_object").classes("w-full text-sm"):
+        ui.label("Todos os campos do envelope menos a assinatura, em JSON canônico:").classes("text-xs text-slate-500")
+        ui.code(encurtar(d.get("dados_assinados", ""), 600), language="json").classes("w-full text-xs")
 
 
-def _rede(rede: list) -> None:
-    with secao("Rede (rastro do servidor)", "hub", "TraceEvents do servidor para esta mensagem: só metadados e cifrado."):
-        if not rede:
-            ui.label("Sem eventos de trânsito para esta mensagem.").classes("text-sm text-slate-500")
-            return
-        with ui.timeline(side="right", layout="dense", color="primary").classes("w-full"):
-            for r in rede:
-                icone = {"recebido": "move_to_inbox", "salto": "alt_route", "entregue": "outbox", "fila": "schedule", "confirmado": "done_all"}
-                para = r.entrada.get("para") if isinstance(r.entrada, dict) else None
-                destino = ", ".join(f"@{p}" for p in para) if isinstance(para, list) else (f"@{para}" if para else "")
-                subtitulo = f"{r.ts.strftime('%H:%M:%S')}" + (f" · {r.duracao_ms:.2f} ms" if r.duracao_ms else "")
-                with ui.timeline_entry(
-                    title=f"{r.etapa} em {r.ator}" + (f" (para {destino})" if destino else ""),
-                    subtitle=subtitulo,
-                    icon=icone.get(r.etapa, "circle"),
-                    color="warning" if r.etapa == "fila" else None,
-                ):
-                    saida = r.saida if isinstance(r.saida, str) else ", ".join(f"{k}: {v}" for k, v in (r.saida or {}).items())
-                    ui.label(saida).classes("text-xs text-slate-600")
+def _detalhe_rede(d: Detalhe, p: inspecao.Percurso) -> None:
+    trilha_percurso(d.item.remetente, p)
+    with ui.column().classes("w-full gap-0 mt-2"):
+        ui.label("Registro do servidor").classes("rotulo pb-1")
+        for r in d.rede:
+            entrada = r.entrada if isinstance(r.entrada, dict) else {}
+            destino = entrada.get("para")
+            if isinstance(destino, str) and destino != p.para:
+                continue  # eventos do envelope de outro destinatário
+            with ui.row().classes("items-center gap-2 no-wrap text-sm py-0.5"):
+                ui.label(r.ts.strftime("%H:%M:%S")).classes("font-mono text-xs text-slate-400")
+                ui.icon(ICONE_REDE.get(r.etapa, "circle"), color="warning" if r.etapa == "fila" else "grey-7").classes("text-base")
+                ui.label(f"{NOME_EVENTO.get(r.etapa, r.etapa)} em {r.ator}").classes("text-slate-700")
+    ui.button(
+        "Ver no mapa", icon="route", on_click=lambda: ui.navigate.to(f"/caminho?mensagem={d.item.message_id}&para={p.para}")
+    ).props("flat dense no-caps color=primary")
 
 
-def _etapas_recebimento(recebimento: list[TraceEvent], rotulo: str) -> None:
-    with secao(rotulo, "move_to_inbox", "Primeiro confere a assinatura com a pública do remetente; só então decifra com a própria privada."):
-        ver = _primeiro(recebimento, "verificacao")
-        if ver:
-            d = ver.detalhes
-            with ui.expansion("Verificação da assinatura: " + ("✓ confere" if ver.saida else "✗ não confere"), icon="verified").classes("w-full"):
-                if "h" in d:
-                    resultado = d["passos"][-1].get("multiplica", d["passos"][-1]["quadrado"]) if d.get("passos") else "?"
-                    ui.label(f"sᵉ mod n = {d['s']}^{d['e']} mod {d['n']} = {resultado}").classes("font-mono text-sm")
-                    ui.label(f"H(dados) mod n = {d['h']}  →  {'iguais: assinatura válida' if ver.saida else 'diferentes: rejeitada'}").classes(
-                        "font-mono text-sm"
-                    )
-                    _square_and_multiply(f"{d['s']}^{d['e']} mod {d['n']}", d.get("passos") or [], d["e"])
-                else:
-                    ui.label(f"RSA-PSS SHA-256 com a pública do remetente (n de {d.get('bits_n')} bits): "
-                             + ("válida" if ver.saida else "inválida")).classes("text-sm")
-                if "erro" in d:
-                    ui.label(d["erro"]).classes("text-sm text-red-700")
-        dec = _primeiro(recebimento, "decifragem")
-        if dec:
-            d = dec.detalhes
-            with ui.expansion("Decifragem bloco a bloco", icon="lock_open").classes("w-full"):
-                blocos = d.get("blocos", [])
-                if "d" in d:
-                    ui.label(f"m = cᵈ mod n   com d = {d['d']} (privado, só neste aparelho) e n = {d['n']}").classes("font-mono text-sm")
-                    _tabela(["#", "c", "m = cᵈ mod n", "bytes"], [[i + 1, b["c"], b["m"], b["bloco_hex"]] for i, b in enumerate(blocos)])
-                    for i, b in enumerate(blocos[:MAX_TABELAS_SM]):
-                        _square_and_multiply(f"Bloco {i + 1}: {b['c']}^{d['d']} mod {d['n']} = {b['m']}", b.get("passos") or [], d["d"])
-                else:
-                    ui.label(f"RSA-OAEP: cada bloco de {d.get('bits_n', 2048) // 8} bytes volta ao bloco original.").classes("text-sm")
-                    _tabela(["#", "bloco decifrado (hex)"], [[i + 1, encurtar(b["bloco_hex"], 60)] for i, b in enumerate(blocos)])
-                if "erro" in d:
-                    ui.label(d["erro"]).classes("text-sm text-red-700")
-        txt = _primeiro(recebimento, "decodificacao")
-        if txt:
-            with ui.expansion("Decodificação: bytes → JSON → texto", icon="chat").classes("w-full"):
-                ui.label(f"texto: “{txt.saida}”" if txt.saida else txt.detalhes.get("erro", "")).classes("text-sm")
-                ui.label("from e message_id internos conferidos com o envelope externo.").classes("text-xs text-slate-500")
+def _detalhe_verificacao(ver: TraceEvent) -> None:
+    d = ver.detalhes
+    if "h" in d:
+        resultado = d["passos"][-1].get("multiplica", d["passos"][-1]["quadrado"]) if d.get("passos") else "?"
+        _formula(f"sᵉ mod n = {d['s']}^{d['e']} mod {d['n']} = {resultado}")
+        _formula(f"H(envelope) mod n = {d['h']}  →  {'iguais: assinatura válida' if ver.saida else 'diferentes: rejeitada'}")
+        _square_and_multiply(f"{d['s']}^{d['e']} mod {d['n']}", d.get("passos") or [], d["e"])
+    else:
+        _formula(f"RSA-PSS SHA-256 com a pública do remetente (n de {d.get('bits_n')} bits): " + ("válida" if ver.saida else "inválida"))
+    if "erro" in d:
+        ui.label(d["erro"]).classes("text-sm text-red-700")
 
 
-def _linha_do_tempo(eventos: list[TraceEvent]) -> None:
-    if not eventos:
-        return
-    with secao("Linha do tempo", "timer", "Duração de cada etapa neste aparelho."):
-        maior = max(e.duracao_ms for e in eventos) or 1
-        for e in eventos:
-            para = e.entrada.get("para") if isinstance(e.entrada, dict) else None
-            with ui.row().classes("items-center gap-2 w-full no-wrap"):
-                ui.icon(ICONE_ETAPA.get(e.etapa, "circle"), color="primary").classes("text-base")
-                ui.label(NOME_ETAPA.get(e.etapa, e.etapa) + (f" (@{para})" if para else "")).classes("text-sm w-56 shrink-0")
-                with ui.element("div").classes("grow h-3 bg-slate-100 rounded"):
-                    ui.element("div").classes("h-3 bg-teal-600 rounded").style(f"width: {max(e.duracao_ms / maior * 100, 1):.1f}%")
-                ui.label(f"{e.duracao_ms:.2f} ms").classes("text-xs font-mono w-20 text-right shrink-0")
+def _detalhe_decifragem(dec: TraceEvent) -> None:
+    d = dec.detalhes
+    blocos = d.get("blocos", [])
+    if "d" in d:
+        _formula(f"m = cᵈ mod n    com d = {d['d']} (privado, só neste aparelho) e n = {d['n']}")
+        _tabela(["#", "c", "m = cᵈ mod n", "bytes"], [[i + 1, b["c"], b["m"], b["bloco_hex"]] for i, b in enumerate(blocos)])
+        for i, b in enumerate(blocos[:MAX_TABELAS_SM]):
+            _square_and_multiply(f"bloco {i + 1}: {b['c']}^{d['d']} mod {d['n']} = {b['m']}", b.get("passos") or [], d["d"])
+    else:
+        _formula(f"RSA-OAEP: cada bloco de {d.get('bits_n', 2048) // 8} bytes volta ao bloco original")
+        _tabela(["#", "bloco decifrado (hex)"], [[i + 1, encurtar(b["bloco_hex"], 60)] for i, b in enumerate(blocos)])
+    if "erro" in d:
+        ui.label(d["erro"]).classes("text-sm text-red-700")
 
 
-def _experimentos(envelope: Envelope, privada, publica_remetente) -> None:
+def _detalhe_decodificacao(txt: TraceEvent) -> None:
+    ui.label(f"texto: “{txt.saida}”" if txt.saida else txt.detalhes.get("erro", "")).classes("text-sm")
+    ui.label("from e message_id internos conferidos com o envelope externo: ninguém consegue reassinar como se fosse outro.").classes(
+        "text-xs text-slate-500"
+    )
+
+
+# ---------------------------------------------------------------- experimentos
+
+
+def _experimentos(envelope: Envelope, privada, publica_remetente, propria: bool) -> None:
     with secao(
-        "Experimentos",
+        "E se…?",
         "science",
-        "Simulações locais com este envelope (nada é enviado): o que acontece com a chave errada ou com um bit alterado.",
+        "Simulações com o envelope " + ("da sua cópia" if propria else "que chegou") + ", só neste aparelho: nada é enviado.",
     ):
-        resultado = ui.column().classes("w-full")
 
         async def chave_errada() -> None:
             resultado.clear()
@@ -411,41 +548,50 @@ def _experimentos(envelope: Envelope, privada, publica_remetente) -> None:
                 outra = rsa_didatico.gerar(privada.n.bit_length())
             else:
                 outra = await asyncio.to_thread(rsa_real.gerar)
-            _mostrar(resultado, inspecao.decifrar_com_outra_chave(envelope, outra))
+            _mostrar(resultado, inspecao.decifrar_com_outra_chave(envelope, outra), "key_off")
 
         def adulterar() -> None:
-            _mostrar(resultado, inspecao.adulterar_e_verificar(envelope, publica_remetente))
+            _mostrar(resultado, inspecao.adulterar_e_verificar(envelope, publica_remetente), "gpp_bad")
 
-        with ui.row():
-            ui.button("Decifrar com a chave de outra pessoa", icon="key_off", on_click=chave_errada).props("outline").mark(
-                "experimento-chave-errada"
-            )
-            ui.button("Trocar 1 bit e verificar a assinatura", icon="gpp_bad", on_click=adulterar).props("outline").mark(
+        with ui.row().classes("gap-2"):
+            ui.button("…alguém tentar decifrar com outra chave?", icon="key_off", on_click=chave_errada).props(
+                "outline no-caps"
+            ).mark("experimento-chave-errada")
+            ui.button("…um bit mudar no caminho?", icon="gpp_bad", on_click=adulterar).props("outline no-caps").mark(
                 "experimento-adulterar"
             )
+        resultado = ui.column().classes("w-full gap-2")
 
 
-def _mostrar(resultado: ui.column, experimento: inspecao.Experimento) -> None:
+def _mostrar(resultado: ui.column, experimento: inspecao.Experimento, icone: str) -> None:
     resultado.clear()
     with resultado:
-        ui.label(experimento.titulo).classes("font-bold")
-        if experimento.linhas:
-            colunas = list(experimento.linhas[0])
-            _tabela(colunas, [[_formatar(linha[c]) for c in colunas] for linha in experimento.linhas[:40]])
+        with ui.row().classes("items-start gap-2 no-wrap rounded-xl bg-red-50 px-3 py-2 w-full"):
+            ui.icon(icone, color="negative").classes("text-xl mt-0.5")
+            with ui.column().classes("gap-0"):
+                ui.label(experimento.titulo).classes("font-bold text-sm text-red-900")
+                ui.label(experimento.conclusao).classes("text-sm text-red-900").mark("experimento-conclusao")
         if experimento.texto_obtido is not None:
             ui.label(f"Texto obtido: “{encurtar(experimento.texto_obtido, 120)}”").classes("font-mono text-sm text-red-700 break-all")
-        ui.label(experimento.conclusao).classes("text-sm text-slate-700").mark("experimento-conclusao")
+        if experimento.linhas:
+            with ui.expansion("Ver os números", icon="table_chart").classes("w-full text-sm"):
+                colunas = list(experimento.linhas[0])
+                _tabela(colunas, [[_formatar(linha[c]) for c in colunas] for linha in experimento.linhas[:40]])
 
 
 # ---------------------------------------------------------------- componentes
+
+
+def _formula(texto: str) -> None:
+    ui.label(texto).classes("font-mono text-sm text-slate-800 bg-slate-50 rounded-lg px-3 py-2 break-all w-full")
 
 
 def _square_and_multiply(titulo: str, passos: list[dict], expoente: int) -> None:
     """Uma linha por bit do expoente: elevar ao quadrado sempre; multiplicar pela base quando o bit é 1."""
     if not passos:
         return
-    with ui.expansion(f"Square-and-multiply · {titulo}", icon="calculate").classes("w-full bg-slate-50 rounded"):
-        ui.label(f"expoente {expoente} em binário: {bin(expoente)[2:]}").classes("font-mono text-xs")
+    with ui.expansion(f"Square-and-multiply · {titulo}", icon="calculate").classes("w-full bg-slate-50 rounded-lg text-sm"):
+        ui.label(f"expoente {expoente} em binário: {bin(expoente)[2:]} — um passo por bit").classes("font-mono text-xs")
         _tabela(
             ["passo", "bit", "r² mod n", "× base mod n"],
             [[i + 1, p["bit"], p["quadrado"], p.get("multiplica", "—")] for i, p in enumerate(passos)],
@@ -456,7 +602,7 @@ def _tabela(colunas: list[str], linhas: list[list]) -> None:
     ui.table(
         columns=[{"name": str(i), "label": c, "field": str(i), "align": "left"} for i, c in enumerate(colunas)],
         rows=[{str(i): _formatar(v) for i, v in enumerate(linha)} for linha in linhas],
-        pagination={"rowsPerPage": 12},
+        pagination={"rowsPerPage": 8},
     ).props("dense flat bordered").classes("w-full text-xs font-mono")
 
 
@@ -464,10 +610,6 @@ def _formatar(valor) -> str:
     if isinstance(valor, bool):
         return "sim" if valor else "não"
     return str(valor)
-
-
-def _bytes_b64(texto: str) -> int:
-    return len(base64.b64decode(texto))
 
 
 def _int_b64(texto: str) -> int:

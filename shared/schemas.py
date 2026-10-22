@@ -120,7 +120,7 @@ class ConversaOut(BaseModel):
 # ---------------------------------------------------------------- mensagens
 
 MESSAGE_ID_REGEX = r"^[0-9a-f]{32}$"
-MAX_BLOCOS = 16384  # 2.000 bytes de texto + cabeçalho com blocos de 1 byte (n de 16 bits)
+MAX_BLOCOS = 16384  # 2.000 caracteres (até 8.000 bytes em UTF-8) + cabeçalho, com blocos de 1 byte (n de 16 bits)
 
 
 class Envelope(BaseModel):

@@ -3,7 +3,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from shared.crypto.blocos import (
-    MAX_TEXTO_BYTES,
+    MAX_TEXTO_CARACTERES,
     MensagemGrandeDemais,
     codificar_conteudo,
     decodificar_conteudo,
@@ -31,11 +31,12 @@ def test_acentos_viram_mais_de_um_byte():
 
 
 def test_limite_de_tamanho():
-    codificar_conteudo("a", "m", "x" * MAX_TEXTO_BYTES)
+    codificar_conteudo("a", "m", "x" * MAX_TEXTO_CARACTERES)
+    codificar_conteudo("a", "m", "ç" * MAX_TEXTO_CARACTERES)  # conta caracteres, não bytes
     with pytest.raises(MensagemGrandeDemais):
-        codificar_conteudo("a", "m", "x" * (MAX_TEXTO_BYTES + 1))
+        codificar_conteudo("a", "m", "x" * (MAX_TEXTO_CARACTERES + 1))
     with pytest.raises(MensagemGrandeDemais):
-        codificar_conteudo("a", "m", "ç" * (MAX_TEXTO_BYTES // 2 + 1))  # conta bytes, não caracteres
+        codificar_conteudo("a", "m", "ç" * (MAX_TEXTO_CARACTERES + 1))
 
 
 def test_conteudo_sem_cabecalho():
