@@ -1,4 +1,4 @@
-"""Telas do Passo 0: cadastro (gera as chaves neste aparelho, com a animação da geração) e login."""
+"""Telas do Passo 0: cadastro (gera o par de chaves neste aparelho) e login."""
 
 from __future__ import annotations
 
@@ -14,18 +14,15 @@ from frontend.pages.layout import (
     icone_destaque,
     logotipo,
     mensagem_erro,
+    MODO,
     numero_seguranca,
     pilula,
-    selo_modo,
     tema,
 )
 from frontend.sessao import Sessao
 from shared.crypto.chaves import carregar_publica
-from shared.crypto.rsa_didatico import GeracaoDidatica
 
 USERNAME = re.compile(r"^[a-z0-9_]{3,20}$")
-BITS_DIDATICO = {16: "16", 24: "24", 32: "32", 48: "48", 64: "64"}
-PAUSA_ANIMACAO = 0.35
 # (ícone, título, texto) do painel de apresentação
 DESTAQUES = (
     ("vpn_key", "O par de chaves nasce aqui", "A chave privada fica neste aparelho, guardada com a sua senha."),
@@ -40,20 +37,12 @@ def registrar_paginas(sessao: Sessao) -> None:
         with _tela_de_acesso():
             formulario = ui.column().classes("w-full max-w-md gap-4")
             with formulario:
-                _cabecalho("Criar conta", "Passo 0: os pares de chaves (real e didático) são gerados agora, neste aparelho.")
+                _cabecalho("Criar conta", "Passo 0: o seu par de chaves (RSA 2048 bits) é gerado agora, neste aparelho.")
                 username = _campo(ui.input(
                     "Usuário", validation={"3 a 20 caracteres: a-z, 0-9 ou _": lambda v: bool(USERNAME.fullmatch(v.strip().lower()))}
                 ), "alternate_email").mark("cadastro-usuario")
                 nome = _campo(ui.input("Nome"), "badge").mark("cadastro-nome")
                 senha = _campo(ui.input("Senha (mín. 6)", password=True, password_toggle_button=True), "lock").mark("cadastro-senha")
-                with ui.column().classes("w-full gap-1"):
-                    ui.label("Tamanho da chave didática (bits)").classes("rotulo")
-                    bits = ui.toggle(BITS_DIDATICO, value=32).props(
-                        "no-caps unelevated rounded spread color=white text-color=primary toggle-color=primary"
-                    ).classes("w-full ring-1 ring-stone-200 rounded-full")
-                    ui.label("Quanto menor, mais fácil de quebrar. A chave real tem sempre 2048 bits.").classes(
-                        "text-xs text-stone-500"
-                    )
                 botao = ui.button("Gerar chaves e criar conta", icon="auto_awesome").props("unelevated no-caps size=lg").classes(
                     "w-full rounded-xl"
                 ).mark("cadastro-enviar")
@@ -64,14 +53,14 @@ def registrar_paginas(sessao: Sessao) -> None:
             botao.disable()
             botao.text = "Gerando chaves…"
             try:
-                registro, geracao = await sessao.cadastrar(username.value, nome.value, senha.value, bits.value)
+                registro, _ = await sessao.cadastrar(username.value, nome.value, senha.value)
             except (ErroApi, ValueError, httpx.HTTPError) as erro:
                 ui.notify(mensagem_erro(erro), type="negative", multi_line=True)
                 return
             finally:
                 botao.enable()
                 botao.text = "Gerar chaves e criar conta"
-            ui.notify("Conta criada e chaves públicas publicadas", type="positive")
+            ui.notify("Conta criada e chave pública publicada", type="positive")
             formulario.set_visibility(False)
             resultado.clear()
             with resultado:
@@ -79,12 +68,12 @@ def registrar_paginas(sessao: Sessao) -> None:
                     icone_destaque("celebration", "ok", "text-2xl")
                     with ui.column().classes("gap-0"):
                         ui.label(f"Bem-vindo, {nome.value}!").classes("text-2xl font-bold txt-tinta")
-                        ui.label("Suas chaves públicas já estão no servidor; as privadas ficaram aqui.").classes(
+                        ui.label("Sua chave pública já está no servidor; a privada ficou aqui.").classes(
                             "text-sm text-stone-500"
                         )
-                _animar_geracao(geracao)
                 for chave in registro.chaves:
-                    _cartao_publicada(chave.modo, chave.public_key)
+                    if chave.modo == MODO:
+                        _cartao_publicada(chave.public_key)
                 with ui.row().classes("gap-2"):
                     ui.button("Ir para o chat", icon="forum", on_click=lambda: ui.navigate.to("/chat")).props("unelevated no-caps")
                     ui.button("Minhas chaves", icon="vpn_key", on_click=lambda: ui.navigate.to("/chaves")).props("outline no-caps")
@@ -142,7 +131,7 @@ def _tela_de_acesso() -> ui.column:
             logotipo(grande=True)
             with ui.column().classes("gap-3 max-w-md"):
                 ui.label("Mensagens que só quem deve consegue ler.").classes("text-4xl font-bold txt-tinta leading-tight")
-                ui.label("Cifradas e assinadas com RSA de ponta a ponta. Veja cada passo da matemática acontecendo.").classes(
+                ui.label("Cifradas e assinadas com RSA de ponta a ponta. Veja cada passo acontecendo.").classes(
                     "text-base txt-tinta opacity-80"
                 )
             with ui.column().classes("gap-3 w-full"):
@@ -191,32 +180,11 @@ def _contas_neste_aparelho(sessao: Sessao) -> list[str]:
 # ---------------------------------------------------------------- depois do cadastro
 
 
-def _animar_geracao(geracao: GeracaoDidatica) -> None:
-    """Os passos da seção 6.1 do plano aparecendo um a um (no navegador), com os números da chave recém-gerada."""
-    passos = [
-        ("casino", "1. Sortear dois primos p e q (Miller-Rabin)", f"p = {geracao.p}   q = {geracao.q}"),
-        ("close", "2. n = p × q — o módulo, público", f"n = {geracao.p} × {geracao.q} = {geracao.n}  ({geracao.n.bit_length()} bits)"),
-        ("functions", "3. φ(n) = (p − 1)(q − 1)", f"φ(n) = {geracao.p - 1} × {geracao.q - 1} = {geracao.phi}"),
-        ("lock_open", "4. Escolher e com mdc(e, φ(n)) = 1 — público", f"e = {geracao.e}"),
-        ("vpn_key", "5. d = e⁻¹ mod φ(n) (Euclides estendido) — privado", f"{geracao.e} × {geracao.d} mod {geracao.phi} = 1  →  d = {geracao.d}"),
-        ("publish", "6. Publicar (e, n); guardar d; descartar p, q e φ(n)", f"pública = ({geracao.e}, {geracao.n})   privada = ({geracao.d}, {geracao.n})"),
-    ]
-    with cartao("w-full p-5"):
-        ui.label("Geração da chave didática").classes("text-lg font-bold txt-tinta")
-        with ui.timeline(side="right", layout="comfortable", color="primary").classes("w-full"):
-            for i, (icone, titulo, conta) in enumerate(passos):
-                with ui.timeline_entry(title=titulo, icon=icone).classes("surgir").style(f"animation-delay: {i * PAUSA_ANIMACAO}s"):
-                    ui.label(conta).classes("font-mono text-sm fundo-pessego rounded-lg px-2 py-1 quebra")
-        ui.label("p, q e φ(n) foram descartados: só (e, n) foi publicado, e d ficou no keystore deste aparelho.").classes(
-            "text-sm text-stone-600 surgir"
-        ).style(f"animation-delay: {len(passos) * PAUSA_ANIMACAO}s")
-
-
-def _cartao_publicada(modo: str, public_key: str) -> None:
+def _cartao_publicada(public_key: str) -> None:
     publica = carregar_publica(public_key)
-    with cartao("w-full p-5 gap-2"):
+    with cartao("w-full p-5 gap-2 surgir"):
         with ui.row().classes("items-center gap-2"):
-            selo_modo(modo)
+            ui.icon("key", color="primary")
             ui.label(publica.key_id).classes("font-mono txt-tinta")
             pilula("publicada", "ok", "cloud_done")
         ui.label(f"Fingerprint: {publica.fingerprint_formatado}").classes("font-mono text-xs text-stone-500 quebra")

@@ -19,6 +19,7 @@ from frontend.inspecao import Percurso
 from frontend.mensageiro import ConversaLocal, ItemMensagem, Mensageiro
 from frontend.pages import diagrama
 from frontend.pages.layout import (
+    MODO,
     TONS,
     avatar,
     cartao,
@@ -27,7 +28,6 @@ from frontend.pages.layout import (
     item_mensagem,
     mensagens_com_envelope,
     moldura,
-    selo_modo,
     titulo_pagina,
     vazio,
 )
@@ -48,7 +48,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
         def selecionada() -> tuple[ConversaLocal, ItemMensagem] | None:
             if not estado["seguir"] and estado["mensagem"] is not None:
                 encontrada = mensageiro.mensagem(estado["mensagem"])
-                if encontrada is not None and encontrada[1].envelopes:
+                if encontrada is not None and encontrada[0].modo == MODO and encontrada[1].envelopes:
                     return encontrada
             itens = mensagens_com_envelope(mensageiro)
             return itens[0] if itens else None
@@ -122,7 +122,6 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                                 if item.texto is not None:
                                     ui.label(f"“{encurtar(item.texto, 40)}”").classes("text-sm text-stone-500 italic truncate")
                                 ui.space()
-                                selo_modo(conversa.modo)
                                 ui.button("Ver a criptografia", icon="biotech",
                                           on_click=lambda: ui.navigate.to(f"/inspetor?mensagem={item.message_id}")).props(
                                     "flat dense no-caps color=primary"

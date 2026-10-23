@@ -8,13 +8,13 @@ from nicegui import ui
 
 from frontend.api_client import ErroApi
 from frontend.mensageiro import Mensageiro
-from frontend.pages.layout import NOME_CHAVE, cartao, conectar, icone_destaque, mensagem_erro, moldura, pilula, secao, selo_modo
+from frontend.pages.layout import MODO, cartao, conectar, icone_destaque, mensagem_erro, moldura, pilula, secao
 from frontend.sessao import Sessao
 
 # (título, o que fazer, rota, ícone, só administradores)
 ROTEIRO = (
     ("Conversar", "Crie uma conversa e troque mensagens: cada uma sai cifrada e assinada.", "/chat", "forum", False),
-    ("Ver a criptografia", "No Inspetor, siga a mensagem passo a passo: texto → mᵉ mod n → cᵈ mod n → texto.", "/inspetor", "biotech", False),
+    ("Ver a criptografia", "No Inspetor, siga a mensagem passo a passo: cifrar, assinar, conferir e decifrar.", "/inspetor", "biotech", False),
     ("Seguir o caminho", "Veja o envelope cifrado atravessar os nós até o destinatário.", "/caminho", "route", False),
     ("Observar o servidor", "O que o servidor e um espião na rede enxergam de todo o tráfego.", "/observador", "hub", True),
     ("Derrubar um nó", "Desligue um nó do caminho: a rota é recalculada ou a mensagem espera na fila.", "/servidores", "dns", False),
@@ -63,14 +63,8 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                 with secao("Este aparelho", "smartphone").style("flex: 1 1 18rem"):
                     _linha("Conexão", "conectado ao relay" if mensageiro.conectado else "desconectado")
                     _linha("Nó de origem", eu.servidor if eu and eu.servidor else "relay central")
-                    ui.label("Chaves privadas em uso").classes("rotulo pt-2")
-                    for modo in ("real", "didatico"):
-                        privada = sessao.keystore.ativa(modo) if sessao.keystore else None
-                        with ui.row().classes("items-center gap-2 no-wrap"):
-                            selo_modo(modo)
-                            ui.label(privada.publica.key_id if privada else f"sem {NOME_CHAVE[modo]}").classes(
-                                "font-mono text-sm " + ("text-stone-800" if privada else "txt-erro")
-                            )
+                    privada = sessao.keystore.ativa(MODO) if sessao.keystore else None
+                    _linha("Chave privada", privada.publica.key_id if privada else "nenhuma neste aparelho")
                     ui.button("Ver minhas chaves", icon="vpn_key", on_click=lambda: ui.navigate.to("/chaves")).props(
                         "flat no-caps color=primary"
                     ).classes("mt-auto")

@@ -3,7 +3,6 @@ interceptador enxergam. Só administradores: são os metadados de todos os usuá
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 
@@ -17,11 +16,8 @@ from frontend.mensageiro import Mensageiro
 from frontend.observador import ClienteObservador
 from frontend.pages import diagrama
 from frontend.pages.caminho import legenda
-from frontend.pages.layout import cartao, conectar, encurtar, hora, mensagem_erro, moldura, secao, selo_modo, titulo_pagina
+from frontend.pages.layout import MODO, cartao, conectar, encurtar, hora, mensagem_erro, moldura, secao, titulo_pagina
 from frontend.sessao import Sessao
-from shared.crypto import fatoracao
-from shared.crypto.chaves import carregar_publica
-from shared.crypto.envelope import ErroEnvelope, decifrar_capturado
 from shared.schemas import Envelope
 
 ROTULO_STATUS = {"entregue": "entregue", "offline": "na fila (offline)", "sem_rota": "na fila (sem caminho)"}
@@ -54,7 +50,7 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
             estado = {"selecionado": None, "seguir": True}  # selecionado = seq de um evento "transito"
 
             def evento_atual() -> dict | None:
-                transitos = observador.recentes({"transito"})
+                transitos = _visiveis(observador.recentes({"transito"}))
                 if estado["seguir"] or estado["selecionado"] is None:
                     return transitos[0] if transitos else None
                 return observador.eventos.get(estado["selecionado"])
@@ -90,7 +86,7 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
 
                         @ui.refreshable
                         def trafego() -> None:
-                            eventos = observador.recentes()
+                            eventos = _visiveis(observador.recentes())
                             if not eventos:
                                 ui.label("Nada ainda. Envie uma mensagem pelo chat.").classes("text-sm text-stone-500")
                             atual = evento_atual()
@@ -107,7 +103,7 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
                     if evento is None:
                         return
                     _visao_servidor(evento)
-                    _visao_interceptador(sessao, evento)
+                    _visao_interceptador(evento)
 
                 visoes()
 
@@ -118,8 +114,7 @@ def registrar_paginas(sessao: Sessao, observador: ClienteObservador, mensageiro:
                 botao_adulterar.props(remove="outline" if armada else "unelevated")
                 evento = evento_atual()
                 seq = evento["seq"] if evento else None
-                # cada parte só é refeita quando o que ela mostra muda: refazer as visões a cada evento
-                # apagaria o resultado do "quebrar a chave" que o usuário acabou de pedir
+                # cada parte só é refeita quando o que ela mostra muda: o diagrama reinicia a animação a cada atualização
                 desenho = (seq, observador.topologia.model_dump_json() if observador.topologia else None)
                 if observador.topologia is not None and desenho != estado.get("desenho"):
                     estado["desenho"] = desenho
@@ -174,7 +169,6 @@ def _linha_evento(evento: dict, selecionado: bool, selecionar) -> None:
             with ui.column().classes("gap-0 min-w-0 grow"):
                 with ui.row().classes("items-center gap-1 no-wrap"):
                     ui.label(f"@{evento['de']} → @{evento['para']}").classes("font-medium text-sm")
-                    selo_modo(evento["modo"])
                 ui.label(encurtar(_caminho_texto(evento), 44)).classes("text-xs text-stone-600")
                 rotulo = ROTULO_STATUS[evento["status"]] + (" (da fila)" if evento.get("da_fila") else "")
                 ui.label(rotulo + (" · adulterado" if evento.get("adulterado") else "")).classes("text-xs text-stone-500")
@@ -183,6 +177,11 @@ def _linha_evento(evento: dict, selecionado: bool, selecionar) -> None:
             ui.icon(icone, color="grey-7").classes("text-lg mt-0.5")
             ui.label(texto).classes("text-xs text-stone-600 grow")
         ui.label(hora(evento["ts"]) + evento["ts"][16:19]).classes("text-xs text-stone-400 shrink-0")
+
+
+def _visiveis(eventos: list[dict]) -> list[dict]:
+    """O tráfego do modo real; eventos do didático (dados antigos) não aparecem."""
+    return [e for e in eventos if e.get("modo", MODO) == MODO]
 
 
 def _resumo_evento(evento: dict) -> tuple[str, str]:
@@ -194,7 +193,7 @@ def _resumo_evento(evento: dict) -> tuple[str, str]:
     if tipo == "conexao":
         return ("login", f"@{evento['usuario']} conectou") if evento["online"] else ("logout", f"@{evento['usuario']} desconectou")
     if tipo == "chave":
-        return "key", f"@{evento['usuario']} {evento['evento']} a chave {evento['modo']} ({evento['avisados']} contato(s) avisado(s))"
+        return "key", f"@{evento['usuario']} {evento['evento']} a chave ({evento['avisados']} contato(s) avisado(s))"
     if tipo == "no":
         return "dns", f"nó {evento['no']} {'ligado' if evento['ativo'] else 'desligado'} por @{evento['por']}"
     if tipo == "cliente_removido":
@@ -228,7 +227,7 @@ def _visao_servidor(evento: dict) -> None:
             ui.label("O texto não está aqui: o servidor não tem a privada de ninguém.").classes("text-sm txt-ok")
 
 
-def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
+def _visao_interceptador(evento: dict) -> None:
     envelope = Envelope.model_validate(evento["envelope"])
     with secao(
         "Visão do interceptador",
@@ -242,40 +241,9 @@ def _visao_interceptador(sessao: Sessao, evento: dict) -> None:
         ui.label(bruto.decode("latin-1").translate({i: "·" for i in range(32)})[:64]).classes(
             "font-mono text-sm bg-stone-100 rounded px-2 break-all"
         )
-        resultado = ui.column().classes("w-full gap-1")
+        with ui.row().classes("items-center gap-2 no-wrap rounded-xl fundo-menta px-3 py-2"):
+            ui.icon("verified_user", color="positive")
+            ui.label("RSA-OAEP 2048: sem a privada, só fatorando um n de 617 dígitos — inviável.").classes(
+                "text-sm txt-ok"
+            )
 
-        if envelope.mode == "didatico":
-            async def quebrar_e_ler() -> None:
-                resultado.clear()
-                try:
-                    publica = carregar_publica((await sessao.api.chave_por_id(envelope.to_key_id)).public_key)
-                    quebrada = await asyncio.to_thread(fatoracao.quebrar, publica)
-                    conteudo = decifrar_capturado(envelope, quebrada.privada())
-                except (ErroApi, httpx.HTTPError, fatoracao.FatoracaoFalhou, ErroEnvelope) as erro:
-                    with resultado:
-                        ui.label(f"Não deu: {mensagem_erro(erro)}").classes("text-sm text-stone-600")
-                    return
-                f = quebrada.fatoracao
-                with resultado:
-                    ui.label(
-                        f"n = {f.n} = {f.p} × {f.q}  ({f.metodo}, {f.passos} passos, {f.duracao_ms:.1f} ms)"
-                    ).classes("font-mono text-xs")
-                    ui.label(f"φ(n) = {quebrada.phi}   d = e⁻¹ mod φ(n) = {quebrada.d}").classes("font-mono text-xs")
-                    with ui.row().classes("items-center gap-1"):
-                        ui.icon("lock_open", color="negative")
-                        ui.label(f"Mensagem lida: “{conteudo['text']}”").classes("text-base font-bold txt-erro").mark(
-                            "interceptador-texto"
-                        )
-                    ui.label("Chave didática de poucos bits: fatorar n devolve d. Por isso o modo real usa 2048 bits.").classes(
-                        "text-xs text-stone-600"
-                    )
-
-            ui.button(f"Quebrar a chave de @{envelope.to} e ler", icon="lock_open", on_click=quebrar_e_ler).props(
-                "outline color=negative no-caps"
-            ).mark("interceptador-quebrar")
-        else:
-            with ui.row().classes("items-center gap-2 no-wrap rounded-xl fundo-menta px-3 py-2"):
-                ui.icon("verified_user", color="positive")
-                ui.label("RSA-OAEP 2048: sem a privada, só fatorando um n de 617 dígitos — inviável.").classes(
-                    "text-sm txt-ok"
-                )

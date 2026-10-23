@@ -18,7 +18,7 @@ async def _cadastrar_pela_interface(usuario, nome: str) -> None:
     usuario.find(marker="cadastro-nome").type(nome.title())
     usuario.find(marker="cadastro-senha").type("segredo123")
     usuario.find(marker="cadastro-enviar").click()
-    await usuario.should_see("Geração da chave didática", retries=100)
+    await usuario.should_see("Sua chave pública já está no servidor", retries=100)
 
 
 async def _no_ligado(mensageiro: Mensageiro, nome: str) -> bool:
@@ -34,7 +34,7 @@ async def test_paineis_do_administrador(servidor, tmp_path, monkeypatch):
             await _cadastrar_pela_interface(alice, "alice")  # primeiro cadastro: administradora
             await bob.sessao.cadastrar("bob", "Bob", "segredo456")
             await bob.conectar()
-            conversa = await bob.nova_conversa(["alice"], "didatico")
+            conversa = await bob.nova_conversa(["alice"], "real")
 
             await alice.open("/chat")
             await alice.should_see("Criptografia ponta a ponta", retries=50)
@@ -42,15 +42,15 @@ async def test_paineis_do_administrador(servidor, tmp_path, monkeypatch):
             alice.find(marker="chat-enviar").click()
             await esperar(lambda: [i.texto for i in bob.conversas[conversa.id].mensagens.values()] == ["raio-x"])
 
-            # Inspetor: os passos, números do modo didático, rede e experimentos
+            # Inspetor: os passos, rede e experimentos
             await alice.open("/inspetor")
             await alice.should_see("Cifrar com a chave pública de @bob", retries=50)
-            await alice.should_see("Square-and-multiply")
+            await alice.should_see("bloco(s) RSA-OAEP")
             await alice.should_see("Manaus › Brasília › São Paulo")  # passo "rede", do rastro do servidor
             alice.find(marker="experimento-adulterar").click()
             await alice.should_see("a assinatura deixa de conferir", retries=20)
             alice.find(marker="experimento-chave-errada").click()
-            await alice.should_see("o resultado é lixo", retries=50)
+            await alice.should_see("com a chave errada ele recusa", retries=100)
 
             # Caminho da mensagem: o percurso pelos nós, até a confirmação de Bob
             await alice.open("/caminho")
@@ -58,12 +58,11 @@ async def test_paineis_do_administrador(servidor, tmp_path, monkeypatch):
             await alice.should_see("Brasília")
             await alice.should_see("recebeu e confirmou", retries=50)
 
-            # Observador: visão do servidor e o interceptador quebrando a chave didática de Bob
+            # Observador: visão do servidor e do interceptador, que não consegue ler o RSA de 2048 bits
             await alice.open("/observador")
             await alice.should_see("Visão do servidor", retries=50)
             await alice.should_see("Visão do interceptador")
-            alice.find(marker="interceptador-quebrar").click()
-            await alice.should_see("Mensagem lida: “raio-x”", retries=100)
+            await alice.should_see("inviável")
 
             # Servidores: o interruptor desliga o nó do meio do caminho
             await alice.open("/servidores")
@@ -117,13 +116,13 @@ async def test_paineis_de_um_usuario_comum(servidor, tmp_path, monkeypatch):
             await bob.should_see("Topologia", retries=50)
             await bob.should_not_see(marker="servidor-novo")
 
-            # Minhas chaves: apagar a privada didática deste aparelho (simulação "apagar privada")
+            # Minhas chaves: apagar a privada deste aparelho (simulação "apagar privada")
             await bob.open("/chaves")
             await bob.should_see("Onde cada chave fica", retries=50)
-            didatica = Sessao(ApiCliente(servidor["http"]), tmp_path / "aparelho-bob")
-            await didatica.entrar("bob", "segredo123")
-            key_id = didatica.keystore.ativa("didatico").publica.key_id
-            await didatica.api.fechar()
+            mesmo_aparelho = Sessao(ApiCliente(servidor["http"]), tmp_path / "aparelho-bob")
+            await mesmo_aparelho.entrar("bob", "segredo123")
+            key_id = mesmo_aparelho.keystore.ativa("real").publica.key_id
+            await mesmo_aparelho.api.fechar()
             bob.find(marker=f"apagar-{key_id}").click()
             bob.find(marker="apagar-confirmar").click()
             await bob.should_see("ativa · privada ausente", retries=50)

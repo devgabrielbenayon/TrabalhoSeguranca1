@@ -27,12 +27,10 @@ CORES = {
     "info": "#7b6680",
 }
 PALETA_AVATAR = (MENTA, LIMA, PESSEGO, SALMAO, ROSA, "#e9e1f0")
-NOME_MODO = {"real": "real", "didatico": "didático"}
-NOME_CHAVE = {"real": "chave real", "didatico": "chave didática"}
-ICONE_MODO = {"real": "lock", "didatico": "school"}
-TOM_MODO = {"real": "real", "didatico": "didatico"}
+# as telas só mostram o modo real; o didático (RSA de livro, números pequenos) segue no código e nos testes
+MODO = "real"
 # tons semânticos (fundo, texto e cor do anel), definidos no CSS abaixo
-TONS = {nome: f"tom-{nome}" for nome in ("ok", "real", "didatico", "alerta", "erro", "info", "neutro", "marca")}
+TONS = {nome: f"tom-{nome}" for nome in ("ok", "alerta", "erro", "info", "neutro", "marca")}
 
 # (grupo, ((rota, rótulo, ícone, só administradores), ...))
 MENU = (
@@ -60,8 +58,6 @@ body {{background: var(--fundo); color: #3b2f39}}
 .degrade {{background: linear-gradient(100deg, var(--menta) 0%, var(--lima) 27%, var(--pessego) 54%, var(--salmao) 78%, var(--rosa) 100%)}}
 
 .tom-ok {{background: var(--menta); color: #1f5b3d; --tw-ring-color: #a7e8c2}}
-.tom-real {{background: var(--lima); color: #4a5a10; --tw-ring-color: #cde68a}}
-.tom-didatico {{background: var(--pessego); color: #7a4512; --tw-ring-color: #edbf8a}}
 .tom-alerta {{background: #fcdcc9; color: #8a3f17; --tw-ring-color: var(--salmao)}}
 .tom-erro {{background: #f8d6d7; color: #922f3a; --tw-ring-color: var(--rosa)}}
 .tom-info {{background: #efe8f2; color: #4b3a57; --tw-ring-color: #dccfe4}}
@@ -251,16 +247,12 @@ def titulo_pagina(titulo: str, subtitulo: str | None = None, icone: str | None =
 
 
 def pilula(texto: str, tom: str = "neutro", icone: str | None = None) -> ui.row:
-    """Etiqueta arredondada (status, modo, papel)."""
+    """Etiqueta arredondada (status, papel)."""
     with ui.row().classes(f"items-center gap-1 no-wrap rounded-full px-2 py-0.5 ring-1 {TONS[tom]}") as etiqueta:
         if icone:
             ui.icon(icone).classes("text-xs")
         ui.label(texto).classes("text-xs font-medium leading-tight whitespace-nowrap")
     return etiqueta
-
-
-def selo_modo(modo: str) -> None:
-    pilula(NOME_MODO.get(modo, modo), TOM_MODO.get(modo, "neutro"), ICONE_MODO.get(modo))
 
 
 def avatar(username: str, imagem: str | None = None, tamanho: int = 10, online: bool | None = None) -> None:
@@ -297,10 +289,15 @@ def numero_seguranca(numero: str) -> None:
 # ---------------------------------------------------------------- lista de mensagens (Inspetor e Caminho)
 
 
+def conversas_visiveis(mensageiro: Mensageiro) -> dict[int, ConversaLocal]:
+    """As conversas do modo real; as do didático (dados antigos) não aparecem nas telas."""
+    return {i: c for i, c in mensageiro.conversas.items() if c.modo == MODO}
+
+
 def mensagens_com_envelope(mensageiro: Mensageiro) -> list[tuple[ConversaLocal, ItemMensagem]]:
     """Da mais nova para a mais antiga; só as que têm envelope (avisos locais ficam de fora)."""
     return sorted(
-        ((c, i) for c in mensageiro.conversas.values() for i in c.mensagens.values() if i.envelopes),
+        ((c, i) for c in conversas_visiveis(mensageiro).values() for i in c.mensagens.values() if i.envelopes),
         key=lambda ci: ci[1].sent_at,
         reverse=True,
     )
@@ -322,8 +319,6 @@ def item_mensagem(conversa: ConversaLocal, item: ItemMensagem, selecionado: bool
             ui.label(encurtar(item.texto if item.texto is not None else "[não foi possível ler]", 40)).classes(
                 "text-xs text-stone-500 truncate"
             )
-            with ui.row().classes("pt-1"):
-                selo_modo(conversa.modo)
 
 
 # ---------------------------------------------------------------- texto

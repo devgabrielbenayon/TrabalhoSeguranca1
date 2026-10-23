@@ -12,7 +12,7 @@ from nicegui import ui
 
 from frontend.api_client import ErroApi
 from frontend.mensageiro import Mensageiro
-from frontend.pages.layout import avatar, conectar, mensagem_erro, moldura, selo_modo, titulo_pagina
+from frontend.pages.layout import MODO, avatar, conectar, mensagem_erro, moldura, titulo_pagina
 from frontend.sessao import Sessao
 from shared.schemas import ClienteEdicaoIn, ClienteOut, ServidorOut
 
@@ -103,10 +103,7 @@ def _linha_cliente(sessao: Sessao, cliente: ClienteOut, nos: list[ServidorOut], 
                     ui.label("·")
                     ui.label("online" if cliente.online else "offline")
             with ui.row().classes("gap-1 items-center"):
-                if cliente.modos_ativos:
-                    for modo in cliente.modos_ativos:
-                        selo_modo(modo)
-                else:
+                if MODO not in cliente.modos_ativos:
                     ui.badge("sem chave ativa", color="grey-6").props("outline")
             with ui.row().classes("gap-1 no-wrap"):
                 if cliente.ativo and (proprio or eu.is_admin):

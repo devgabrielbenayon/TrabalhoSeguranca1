@@ -39,15 +39,16 @@ Variáveis de ambiente: `CRIPTOCHAT_API` (URL do back-end), `CRIPTOCHAT_PORTA`, 
 |---|---|
 | Início | Contadores, estado do aparelho e o roteiro da demonstração |
 | Chat | Conversas 1:1 e em grupo; entrega e assinatura como ícones (o detalhe aparece ao passar o mouse), fila "sem caminho", contador de caracteres e atalhos para o Inspetor e o Caminho |
-| Inspetor | Uma mensagem em 7 passos — aparelho de quem envia, rede, aparelho de quem recebe —, com os números reais ao abrir cada passo (blocos, mᵉ mod n, assinatura, cᵈ mod n, square-and-multiply), "quem vê o quê" e experimentos (chave errada, bit adulterado) |
+| Inspetor | Uma mensagem em 7 passos — aparelho de quem envia, rede, aparelho de quem recebe —, com os valores reais ao abrir cada passo (blocos RSA-OAEP, assinatura RSA-PSS), "quem vê o quê" e experimentos (chave errada, bit adulterado) |
 | Caminho da mensagem | O envelope animado sobre a topologia, por destinatário, até a confirmação de entrega. Qualquer usuário, para as próprias mensagens |
-| Minhas chaves | Onde cada chave fica (aparelho, servidor, contatos), as duas metades do par de cada modo, o ciclo de vida (troca, exclusão, apagar privada) e o diretório de chaves públicas |
-| Observador (admin) | Tráfego de todos ao vivo: caminho animado, visão do servidor e do interceptador (que quebra chaves didáticas e lê a mensagem) e adulteração de demonstração |
+| Minhas chaves | Onde cada chave fica (aparelho, servidor, contatos), as duas metades do par, o ciclo de vida (troca, exclusão, apagar privada) e o diretório de chaves públicas |
+| Observador (admin) | Tráfego de todos ao vivo: caminho animado, visão do servidor e do interceptador e adulteração de demonstração |
 | Clientes | CRUD: busca, edição do perfil, mudança de nó, promoção, remoção (revoga as chaves) e reativação |
 | Servidores | CRUD de nós e ligações; desligar um nó recalcula o caminho ou deixa a mensagem na fila |
 
-O Laboratório (quebrar uma chave fatorando n e gráficos de tempo por tamanho de chave) saiu do menu, mas continua
-disponível em `/laboratorio`.
+As telas usam só o modo real (RSA 2048 bits). O modo didático (RSA de livro com números pequenos) continua no código
+e nos testes, mas não aparece: não dá para criar conversas nele, e conversas didáticas antigas ficam ocultas. O
+Laboratório (quebrar uma chave didática fatorando n) saiu do menu, mas continua disponível em `/laboratorio`.
 
 ## Testes
 

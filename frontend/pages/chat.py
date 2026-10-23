@@ -9,18 +9,17 @@ from nicegui import background_tasks, ui
 from frontend.api_client import ErroApi
 from frontend.mensageiro import REMETENTE_SISTEMA, ConversaLocal, ErroEnvio, ItemMensagem, Mensageiro
 from frontend.pages.layout import (
-    ICONE_MODO,
-    NOME_MODO,
+    MODO,
     avatar,
     cartao,
     conectar,
+    conversas_visiveis,
     encurtar,
     hora,
     mensagem_erro,
     moldura,
     numero_seguranca,
     pilula,
-    selo_modo,
     vazio,
 )
 from frontend.sessao import Sessao
@@ -28,13 +27,6 @@ from shared.crypto.base import formatar_fingerprint
 from shared.crypto.base import numero_seguranca as calcular_numero_seguranca
 from shared.crypto.blocos import MAX_TEXTO_CARACTERES, MensagemGrandeDemais
 from shared.schemas import ClienteOut
-
-MODOS = {"real": "RSA real (2048 bits)", "didatico": "RSA didático (números pequenos)"}
-# (título, explicação) de cada modo no diálogo de nova conversa
-OPCOES_MODO = {
-    "real": ("Real", "RSA de 2048 bits: o que se usa de verdade."),
-    "didatico": ("Didático", "Números pequenos, para ver a matemática no Inspetor."),
-}
 
 
 def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
@@ -47,7 +39,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
         clientes = await _outros_clientes(sessao)
         conteudo = moldura(sessao, mensageiro, "/chat")
 
-        estado = {"atual": conversa if conversa in mensageiro.conversas else _mais_recente(mensageiro)}
+        estado = {"atual": conversa if conversa in conversas_visiveis(mensageiro) else _mais_recente(mensageiro)}
         nomes = {c.username: c.nome for c in clientes}
 
         def selecionar(conversation_id: int) -> None:
@@ -76,14 +68,15 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 
                         @ui.refreshable
                         def lista() -> None:
-                            if not mensageiro.conversas:
+                            conversas = conversas_visiveis(mensageiro)
+                            if not conversas:
                                 with ui.column().classes("w-full items-center gap-2 py-10 text-center"):
                                     ui.icon("forum", color="grey-5").classes("text-5xl")
                                     ui.label("Nenhuma conversa ainda.").classes("text-sm text-stone-500")
                                     ui.button("Começar uma", icon="add", on_click=abrir_nova).props("flat no-caps color=primary")
                                 return
                             termo = (filtro.value or "").strip().lower().lstrip("@")
-                            ordem = sorted(mensageiro.conversas.values(), key=_atividade, reverse=True)
+                            ordem = sorted(conversas.values(), key=_atividade, reverse=True)
                             visiveis = [c for c in ordem if not termo or _combina(c, termo, nomes, sessao.usuario.username)]
                             if not visiveis:
                                 ui.label("Nenhuma conversa com esse nome.").classes("text-sm text-stone-500 px-1")
@@ -100,7 +93,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 
                     @ui.refreshable
                     def cabecalho_conversa() -> None:
-                        atual = mensageiro.conversas.get(estado["atual"])
+                        atual = conversas_visiveis(mensageiro).get(estado["atual"])
                         if atual is None:
                             return
                         outros = [p for p in atual.participantes if p != sessao.usuario.username]
@@ -116,7 +109,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
                                         ui.label(f"@{outros[0]}").classes("text-xs text-stone-400")
                                 with ui.row().classes("items-center gap-1 no-wrap"):
                                     ui.icon("lock", color="positive").classes("text-sm")
-                                    ui.label(f"Criptografia ponta a ponta · {MODOS[atual.modo]}").classes("text-xs text-stone-500")
+                                    ui.label("Criptografia ponta a ponta · RSA 2048 bits").classes("text-xs text-stone-500")
                             ui.button(icon="verified_user", on_click=lambda: _dialogo_seguranca(mensageiro, atual)).props(
                                 "flat round color=primary"
                             ).tooltip("Números de segurança")
@@ -127,7 +120,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
 
                         @ui.refreshable
                         def mensagens() -> None:
-                            atual = mensageiro.conversas.get(estado["atual"])
+                            atual = conversas_visiveis(mensageiro).get(estado["atual"])
                             if atual is None:
                                 vazio("forum", "Selecione uma conversa ou crie uma nova")
                                 with ui.row().classes("w-full justify-center"):
@@ -173,7 +166,7 @@ def registrar_paginas(sessao: Sessao, mensageiro: Mensageiro) -> None:
         def atualizar() -> None:
             if mensageiro.versao != ultima["versao"]:
                 ultima["versao"] = mensageiro.versao
-                if estado["atual"] not in mensageiro.conversas:
+                if estado["atual"] not in conversas_visiveis(mensageiro):
                     estado["atual"] = _mais_recente(mensageiro)
                 lista.refresh()
                 cabecalho_conversa.refresh()
@@ -200,9 +193,10 @@ def _atividade(conversa: ConversaLocal) -> str:
 
 
 def _mais_recente(mensageiro: Mensageiro) -> int | None:
-    if not mensageiro.conversas:
+    conversas = conversas_visiveis(mensageiro)
+    if not conversas:
         return None
-    return max(mensageiro.conversas.values(), key=lambda c: (_atividade(c), c.id)).id
+    return max(conversas.values(), key=lambda c: (_atividade(c), c.id)).id
 
 
 def _titulo(conversa: ConversaLocal, outros: list[str], nomes: dict[str, str]) -> str:
@@ -238,7 +232,8 @@ def _item_lista(sessao: Sessao, conversa: ConversaLocal, nomes: dict[str, str], 
         with ui.column().classes("gap-0.5 grow min-w-0"):
             with ui.row().classes("items-center gap-1.5 no-wrap w-full"):
                 ui.label(_titulo(conversa, outros, nomes)).classes("font-semibold txt-tinta truncate grow")
-                selo_modo(conversa.modo)
+                if ultima:
+                    ui.label(hora(ultima.sent_at)).classes("text-[11px] text-stone-400 shrink-0")
             with ui.row().classes("items-center gap-1 no-wrap w-full"):
                 previa = "sem mensagens" if ultima is None else (
                     ("você: " if ultima.propria else "") + (ultima.texto if ultima.texto is not None else "[não foi possível ler]")
@@ -246,27 +241,14 @@ def _item_lista(sessao: Sessao, conversa: ConversaLocal, nomes: dict[str, str], 
                 ui.label(encurtar(previa, 40)).classes("text-xs text-stone-500 truncate grow")
                 if conversa.nao_lidas:
                     ui.badge(str(conversa.nao_lidas)).props("rounded color=accent text-color=primary")
-                elif ultima:
-                    ui.label(hora(ultima.sent_at)).classes("text-[11px] text-stone-400 shrink-0")
 
 
 # ---------------------------------------------------------------- nova conversa
 
 
 def _dialogo_nova_conversa(sessao: Sessao, mensageiro: Mensageiro, clientes: list[ClienteOut], ao_criar):
-    """Escolher as pessoas numa lista (com busca, status e o nó de cada uma) e o modo. Devolve a função que abre."""
-    escolha: dict = {"modo": "real", "pessoas": [], "clientes": clientes}
-    opcoes: dict[str, ui.element] = {}
-
-    def classes_opcao(marcada: bool) -> str:
-        cores = "ring-2 ring-[#45324d] fundo-pessego" if marcada else "ring-1 ring-stone-200 clicavel"
-        return f"flex flex-col grow basis-0 gap-0.5 p-3 rounded-xl cursor-pointer {cores}"
-
-    def escolher_modo(modo: str) -> None:
-        escolha["modo"] = modo
-        for chave, opcao in opcoes.items():
-            opcao.classes(replace=classes_opcao(chave == modo))
-        pessoas.refresh()
+    """Escolher as pessoas numa lista (com busca, status e o nó de cada uma). Devolve a função que abre."""
+    escolha: dict = {"pessoas": [], "clientes": clientes}
 
     def alternar(username: str) -> None:
         if username in escolha["pessoas"]:
@@ -302,7 +284,7 @@ def _dialogo_nova_conversa(sessao: Sessao, mensageiro: Mensageiro, clientes: lis
 
         escolhidas()
 
-        with ui.scroll_area().classes("w-full rounded-xl ring-1 ring-stone-200").style("height: 248px"):
+        with ui.scroll_area().classes("w-full rounded-xl ring-1 ring-stone-200").style("height: 300px"):
 
             @ui.refreshable
             def pessoas() -> None:
@@ -314,28 +296,15 @@ def _dialogo_nova_conversa(sessao: Sessao, mensageiro: Mensageiro, clientes: lis
                     ui.label("Ninguém encontrado com esse nome.").classes("text-sm text-stone-500 p-2")
                 with ui.column().classes("w-full gap-1"):
                     for cliente in visiveis:
-                        _linha_pessoa(cliente, cliente.username in escolha["pessoas"], escolha["modo"],
-                                      lambda u=cliente.username: alternar(u))
+                        _linha_pessoa(cliente, cliente.username in escolha["pessoas"], lambda u=cliente.username: alternar(u))
 
             pessoas()
-
-        ui.label("Criptografia").classes("rotulo mt-1")
-        with ui.row().classes("w-full gap-2 no-wrap"):
-            for modo, (titulo, explicacao) in OPCOES_MODO.items():
-                with ui.element("div").classes(classes_opcao(modo == "real")).on(
-                    "click", lambda m=modo: escolher_modo(m)
-                ).mark(f"chat-modo-{modo}") as opcao:
-                    with ui.row().classes("items-center gap-1 no-wrap"):
-                        ui.icon(ICONE_MODO[modo], color="primary")
-                        ui.label(titulo).classes("font-bold text-sm txt-tinta")
-                    ui.label(explicacao).classes("text-xs text-stone-600")
-                opcoes[modo] = opcao
 
         async def criar() -> None:
             if not escolha["pessoas"]:
                 return
             try:
-                nova = await mensageiro.nova_conversa(list(escolha["pessoas"]), escolha["modo"])
+                nova = await mensageiro.nova_conversa(list(escolha["pessoas"]), MODO)
             except (ErroApi, httpx.HTTPError) as erro:
                 ui.notify(mensagem_erro(erro), type="negative")
                 return
@@ -366,7 +335,7 @@ def _dialogo_nova_conversa(sessao: Sessao, mensageiro: Mensageiro, clientes: lis
     return abrir
 
 
-def _linha_pessoa(cliente: ClienteOut, marcada: bool, modo: str, ao_clicar) -> None:
+def _linha_pessoa(cliente: ClienteOut, marcada: bool, ao_clicar) -> None:
     estado = "selecionado" if marcada else "clicavel"
     with ui.row().classes(f"w-full items-center gap-3 no-wrap rounded-xl px-2 py-2 cursor-pointer {estado}").on(
         "click", ao_clicar
@@ -376,10 +345,8 @@ def _linha_pessoa(cliente: ClienteOut, marcada: bool, modo: str, ao_clicar) -> N
             ui.label(cliente.nome).classes("text-sm font-semibold txt-tinta truncate")
             detalhe = f"@{cliente.username}" + (f" · nó {cliente.servidor}" if cliente.servidor else "")
             ui.label(detalhe).classes("text-xs text-stone-500 truncate")
-        if modo not in cliente.modos_ativos:
-            pilula(f"sem chave {NOME_MODO[modo]}", "alerta").tooltip(
-                "Esta pessoa não tem chave ativa neste modo: ainda não dá para cifrar para ela"
-            )
+        if MODO not in cliente.modos_ativos:
+            pilula("sem chave", "alerta").tooltip("Esta pessoa não tem chave ativa: ainda não dá para cifrar para ela")
         else:
             ui.label("online" if cliente.online else "offline").classes(
                 "text-xs " + ("txt-ok font-medium" if cliente.online else "text-stone-400")

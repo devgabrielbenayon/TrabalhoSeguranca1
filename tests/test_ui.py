@@ -30,12 +30,13 @@ async def test_cadastro_e_conversa_pela_interface(servidor, tmp_path, monkeypatc
             alice.find(marker="cadastro-nome").type("Alice")
             alice.find(marker="cadastro-senha").type("segredo123")
             alice.find(marker="cadastro-enviar").click()
-            await alice.should_see("Geração da chave didática", retries=100)
-            await alice.should_see("φ(n)")
+            await alice.should_see("Sua chave pública já está no servidor", retries=100)
+            await alice.should_not_see("didática")  # só o modo real aparece nas telas
 
             await alice.open("/chat")
             alice.find(marker="chat-nova").click()
             await alice.should_see("Bob")  # a lista de pessoas mostra o nome e o @usuário
+            await alice.should_not_see("Didático")  # sem escolha de modo: toda conversa é RSA real
             alice.find(marker="chat-contato-bob").click()
             alice.find(marker="chat-criar").click()
             await alice.should_see("Criptografia ponta a ponta", retries=50)
@@ -71,13 +72,15 @@ async def test_trocar_e_excluir_chave_pela_interface(servidor, tmp_path, monkeyp
         alice.find(marker="cadastro-nome").type("Alice")
         alice.find(marker="cadastro-senha").type("segredo123")
         alice.find(marker="cadastro-enviar").click()
-        await alice.should_see("Geração da chave didática", retries=100)
+        await alice.should_see("Sua chave pública já está no servidor", retries=100)
 
         await alice.open("/chaves")
+        await alice.should_see("Sua chave", retries=50)
+        await alice.should_not_see("didática")
         alice.find(marker="trocar-real").click()
         await alice.should_see("substituída · privada neste aparelho", retries=100)
 
-        alice.find(marker="excluir-didatico").click()
+        alice.find(marker="excluir-real").click()
         alice.find(marker="excluir-senha").type("segredo123")
         alice.find(marker="excluir-confirmar").click()
         await alice.should_see("revogada · privada neste aparelho", retries=50)

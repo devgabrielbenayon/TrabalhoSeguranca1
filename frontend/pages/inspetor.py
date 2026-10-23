@@ -1,9 +1,9 @@
-"""Inspetor (RF14): uma mensagem passo a passo neste aparelho — cada etapa do RSA com os números reais.
+"""Inspetor (RF14): uma mensagem passo a passo neste aparelho — cada etapa do RSA com os valores reais.
 
-A jornada tem três fases: no aparelho de quem envia (texto → bytes → mᵉ mod n → assinatura), na rede
-(os nós) e no aparelho de quem recebe (verificação → cᵈ mod n → texto). Cada passo mostra um resumo;
-os números completos (tabelas, square-and-multiply) ficam ao abrir o passo. O rastro é local (tem
-texto claro e d): não sai daqui.
+A jornada tem três fases: no aparelho de quem envia (texto → bytes → cifra RSA-OAEP → assinatura RSA-PSS),
+na rede (os nós) e no aparelho de quem recebe (verificação → decifragem → texto). Cada passo mostra um
+resumo; os detalhes (blocos, assinatura) ficam ao abrir o passo. O rastro é local (tem texto claro): não
+sai daqui.
 """
 
 from __future__ import annotations
@@ -35,17 +35,15 @@ from frontend.pages.layout import (
     moldura,
     pilula,
     secao,
-    selo_modo,
     titulo_pagina,
     vazio,
 )
 from frontend.sessao import Sessao
-from shared.crypto import rsa_didatico, rsa_real
+from shared.crypto import rsa_real
 from shared.crypto.chaves import ChavePrivada, ChavePublica
 from shared.schemas import Envelope, EventoTransitoOut
 from shared.trace import TraceEvent
 
-MAX_TABELAS_SM = 1  # tabela square-and-multiply só do 1º bloco (os demais repetem a mesma conta)
 CONTROLE = {i: "·" for i in (*range(32), *range(127, 160))}  # bytes sem caractere visível em latin-1
 ICONE_REDE = {"recebido": "move_to_inbox", "salto": "alt_route", "entregue": "outbox", "fila": "schedule", "confirmado": "done_all"}
 NOME_EVENTO = {"recebido": "recebido", "salto": "repassado", "entregue": "entregue", "fila": "na fila", "confirmado": "confirmado"}
@@ -160,7 +158,7 @@ def _mostrar_detalhe(d: Detalhe, eu: str, para: str | None) -> None:
 
     corpo()
     if d.para_mim is not None and d.privada is not None:
-        _experimentos(d.para_mim, d.privada, d.publica_remetente, d.item.propria)
+        _experimentos(d.para_mim, d.publica_remetente, d.item.propria)
 
 
 def _cabecalho(d: Detalhe) -> None:
@@ -172,7 +170,6 @@ def _cabecalho(d: Detalhe) -> None:
                 pilula("enviada por você", "info", "north_east")
             else:
                 pilula(f"recebida de @{item.remetente}", "info", "south_west")
-            selo_modo(d.conversa.modo)
             texto, tom = SITUACAO.get(item.status, (item.status, "neutro"))
             pilula(texto, tom)
             ui.space()
@@ -196,7 +193,7 @@ def _cabecalho(d: Detalhe) -> None:
 
 def _quem_ve(item: ItemMensagem, envelope: Envelope) -> None:
     """A mesma mensagem sob três olhares: o aparelho, o servidor e alguém escutando a rede."""
-    bruto = b"".join(base64.b64decode(b) for b in envelope.blocks[:12])[:24]  # no didático cada bloco tem poucos bytes
+    bruto = base64.b64decode(envelope.blocks[0])[:24]
     with ui.row().classes("w-full gap-4 items-stretch max-lg:flex-wrap"):
         with _olhar("Você", "smartphone", "ok", "lê o texto: tem a chave privada"):
             ui.label(item.texto if item.texto is not None else "[não foi possível decifrar]").classes(
@@ -265,22 +262,16 @@ def _passos_envio(d: Detalhe, alvo: str) -> None:
             f"{cod.detalhes.get('bytes')} bytes", lambda: _detalhe_codificacao(cod), cod.duracao_ms,
         )
     if cif:
-        blocos = cif.detalhes.get("blocos", [])
-        if cif.detalhes.get("modo") == "didatico" and blocos:
-            valor = f"c₁ = {blocos[0]['m']}^{cif.detalhes['e']} mod {cif.detalhes['n']} = {blocos[0]['c']}"
-        else:
-            valor = f"{len(blocos)} bloco(s) RSA-OAEP"
         _passo(
             2, "lock", f"Cifrar com a chave pública de @{alvo}",
-            f"Cada pedaço de bytes vira um número m e é cifrado: só a privada de @{alvo} desfaz.",
-            valor, lambda: _detalhe_cifragem(cif), cif.duracao_ms,
+            f"Cada pedaço da mensagem é cifrado: só a privada de @{alvo} desfaz.",
+            f"{len(cif.detalhes.get('blocos', []))} bloco(s) RSA-OAEP", lambda: _detalhe_cifragem(cif), cif.duracao_ms,
         )
     if ass:
-        valor = f"s = h^{ass.detalhes['d']} mod {ass.detalhes['n']}" if "h" in ass.detalhes else "RSA-PSS · SHA-256"
         _passo(
             3, "draw", f"Assinar com a chave privada de @{remetente}",
             "Prova que veio de quem diz ter enviado e que nada foi alterado no caminho.",
-            valor, lambda: _detalhe_assinatura(ass), ass.duracao_ms,
+            "RSA-PSS · SHA-256", lambda: _detalhe_assinatura(ass), ass.duracao_ms,
         )
 
 
@@ -337,15 +328,10 @@ def _passos_recebimento(recebimento: list[TraceEvent], remetente: str, alvo: str
         )
     dec = _primeiro(recebimento, "decifragem")
     if dec:
-        blocos = dec.detalhes.get("blocos", [])
-        if "d" in dec.detalhes and blocos:
-            valor = f"m₁ = {blocos[0]['c']}^{dec.detalhes['d']} mod {dec.detalhes['n']} = {blocos[0]['m']}"
-        else:
-            valor = f"{len(blocos)} bloco(s) RSA-OAEP"
         _passo(
             6, "lock_open", f"Decifrar com a chave privada de @{alvo}",
             "A privada nunca saiu deste aparelho: é a única que desfaz a cifra.",
-            valor, lambda: _detalhe_decifragem(dec), dec.duracao_ms,
+            f"{len(dec.detalhes.get('blocos', []))} bloco(s) RSA-OAEP", lambda: _detalhe_decifragem(dec), dec.duracao_ms,
         )
     txt = _primeiro(recebimento, "decodificacao")
     if txt:
@@ -426,52 +412,20 @@ def _detalhe_codificacao(cod: TraceEvent) -> None:
 def _detalhe_cifragem(cif: TraceEvent) -> None:
     d = cif.detalhes
     blocos = d.get("blocos", [])
-    if d.get("modo") == "didatico":
-        _formula(f"c = mᵉ mod n    com e = {d['e']} e n = {d['n']}")
-        ui.label(f"Blocos de {d['tamanho_bloco']} byte(s): cada um vira o inteiro m (o último é completado com zeros).").classes(
-            "text-xs text-stone-500"
-        )
-        _tabela(["#", "bloco (hex)", "m", "c = mᵉ mod n"], [[i + 1, b["bloco_hex"], b["m"], b["c"]] for i, b in enumerate(blocos)])
-        _repeticoes(blocos)
-        for i, b in enumerate(blocos[:MAX_TABELAS_SM]):
-            _square_and_multiply(f"bloco {i + 1}: {b['m']}^{d['e']} mod {d['n']} = {b['c']}", b.get("passos") or [], d["e"])
-    else:
-        _formula(f"RSA-OAEP com SHA-256 · e = {d.get('e')} · n de {d.get('bits_n')} bits · até {d.get('tamanho_bloco')} bytes por bloco")
-        _tabela(
-            ["#", "bloco (hex)", "cifrado (início)"],
-            [[i + 1, encurtar(b["bloco_hex"], 40), encurtar(hex(b["c"])[2:], 40)] for i, b in enumerate(blocos)],
-        )
-        ui.label("O OAEP mistura bytes aleatórios: o mesmo texto cifrado duas vezes dá resultados diferentes.").classes(
-            "text-xs text-stone-500"
-        )
-
-
-def _repeticoes(blocos: list[dict]) -> None:
-    """RSA de livro é determinístico: blocos iguais viram cifrados iguais (o Inspetor avisa)."""
-    vistos: dict[int, int] = {}
-    for b in blocos:
-        vistos[b["m"]] = vistos.get(b["m"], 0) + 1
-    repetidos = {m: n for m, n in vistos.items() if n > 1}
-    if repetidos:
-        exemplos = ", ".join(f"m={m} ×{n}" for m, n in list(repetidos.items())[:4])
-        with ui.row().classes("items-start gap-2 no-wrap rounded-lg fundo-pessego px-3 py-2"):
-            ui.icon("warning", color="warning").classes("text-base mt-0.5")
-            ui.label(
-                f"Padrão visível: {len(repetidos)} valor(es) de bloco se repetem ({exemplos}) e geram o MESMO c. "
-                "Sem padding, quem olha o cifrado vê a repetição."
-            ).classes("text-sm txt-alerta")
+    _formula(f"RSA-OAEP com SHA-256 · e = {d.get('e')} · n de {d.get('bits_n')} bits · até {d.get('tamanho_bloco')} bytes por bloco")
+    _tabela(
+        ["#", "bloco (hex)", "cifrado (início)"],
+        [[i + 1, encurtar(b["bloco_hex"], 40), encurtar(hex(b["c"])[2:], 40)] for i, b in enumerate(blocos)],
+    )
+    ui.label("O OAEP mistura bytes aleatórios: o mesmo texto cifrado duas vezes dá resultados diferentes.").classes(
+        "text-xs text-stone-500"
+    )
 
 
 def _detalhe_assinatura(ass: TraceEvent) -> None:
     d = ass.detalhes
-    if "h" in d:
-        _formula(f"h = SHA-256(envelope) mod n = {d['h']}")
-        _formula(f"s = hᵈ mod n = {d['h']}^{d['d']} mod {d['n']} = {_int_b64(ass.saida)}")
-        ui.label("Com n pequeno o hash é reduzido mod n: limitação proposital do modo didático.").classes("text-xs text-stone-500")
-        _square_and_multiply(f"{d['h']}^{d['d']} mod {d['n']}", d.get("passos") or [], d["d"])
-    else:
-        _formula(f"RSA-PSS com SHA-256 (n de {d.get('bits_n')} bits)")
-        ui.label(f"assinatura: {encurtar(str(ass.saida), 64)}").classes("font-mono text-xs break-all text-stone-600")
+    _formula(f"RSA-PSS com SHA-256 (n de {d.get('bits_n')} bits)")
+    ui.label(f"assinatura: {encurtar(str(ass.saida), 64)}").classes("font-mono text-xs break-all text-stone-600")
     with ui.expansion("O que é assinado", icon="data_object").classes("w-full text-sm"):
         ui.label("Todos os campos do envelope menos a assinatura, em JSON canônico:").classes("text-xs text-stone-500")
         ui.code(encurtar(d.get("dados_assinados", ""), 600), language="json").classes("w-full text-xs")
@@ -497,13 +451,7 @@ def _detalhe_rede(d: Detalhe, p: inspecao.Percurso) -> None:
 
 def _detalhe_verificacao(ver: TraceEvent) -> None:
     d = ver.detalhes
-    if "h" in d:
-        resultado = d["passos"][-1].get("multiplica", d["passos"][-1]["quadrado"]) if d.get("passos") else "?"
-        _formula(f"sᵉ mod n = {d['s']}^{d['e']} mod {d['n']} = {resultado}")
-        _formula(f"H(envelope) mod n = {d['h']}  →  {'iguais: assinatura válida' if ver.saida else 'diferentes: rejeitada'}")
-        _square_and_multiply(f"{d['s']}^{d['e']} mod {d['n']}", d.get("passos") or [], d["e"])
-    else:
-        _formula(f"RSA-PSS SHA-256 com a pública do remetente (n de {d.get('bits_n')} bits): " + ("válida" if ver.saida else "inválida"))
+    _formula(f"RSA-PSS SHA-256 com a pública do remetente (n de {d.get('bits_n')} bits): " + ("válida" if ver.saida else "inválida"))
     if "erro" in d:
         ui.label(d["erro"]).classes("text-sm txt-erro")
 
@@ -511,14 +459,8 @@ def _detalhe_verificacao(ver: TraceEvent) -> None:
 def _detalhe_decifragem(dec: TraceEvent) -> None:
     d = dec.detalhes
     blocos = d.get("blocos", [])
-    if "d" in d:
-        _formula(f"m = cᵈ mod n    com d = {d['d']} (privado, só neste aparelho) e n = {d['n']}")
-        _tabela(["#", "c", "m = cᵈ mod n", "bytes"], [[i + 1, b["c"], b["m"], b["bloco_hex"]] for i, b in enumerate(blocos)])
-        for i, b in enumerate(blocos[:MAX_TABELAS_SM]):
-            _square_and_multiply(f"bloco {i + 1}: {b['c']}^{d['d']} mod {d['n']} = {b['m']}", b.get("passos") or [], d["d"])
-    else:
-        _formula(f"RSA-OAEP: cada bloco de {d.get('bits_n', 2048) // 8} bytes volta ao bloco original")
-        _tabela(["#", "bloco decifrado (hex)"], [[i + 1, encurtar(b["bloco_hex"], 60)] for i, b in enumerate(blocos)])
+    _formula(f"RSA-OAEP: cada bloco de {d.get('bits_n', 2048) // 8} bytes volta ao bloco original")
+    _tabela(["#", "bloco decifrado (hex)"], [[i + 1, encurtar(b["bloco_hex"], 60)] for i, b in enumerate(blocos)])
     if "erro" in d:
         ui.label(d["erro"]).classes("text-sm txt-erro")
 
@@ -533,7 +475,7 @@ def _detalhe_decodificacao(txt: TraceEvent) -> None:
 # ---------------------------------------------------------------- experimentos
 
 
-def _experimentos(envelope: Envelope, privada, publica_remetente, propria: bool) -> None:
+def _experimentos(envelope: Envelope, publica_remetente, propria: bool) -> None:
     with secao(
         "E se…?",
         "science",
@@ -544,10 +486,7 @@ def _experimentos(envelope: Envelope, privada, publica_remetente, propria: bool)
             resultado.clear()
             with resultado:
                 ui.spinner()
-            if envelope.mode == "didatico":
-                outra = rsa_didatico.gerar(privada.n.bit_length())
-            else:
-                outra = await asyncio.to_thread(rsa_real.gerar)
+            outra = await asyncio.to_thread(rsa_real.gerar)
             _mostrar(resultado, inspecao.decifrar_com_outra_chave(envelope, outra), "key_off")
 
         def adulterar() -> None:
@@ -586,18 +525,6 @@ def _formula(texto: str) -> None:
     ui.label(texto).classes("font-mono text-sm text-stone-800 bg-stone-50 rounded-lg px-3 py-2 break-all w-full")
 
 
-def _square_and_multiply(titulo: str, passos: list[dict], expoente: int) -> None:
-    """Uma linha por bit do expoente: elevar ao quadrado sempre; multiplicar pela base quando o bit é 1."""
-    if not passos:
-        return
-    with ui.expansion(f"Square-and-multiply · {titulo}", icon="calculate").classes("w-full bg-stone-50 rounded-lg text-sm"):
-        ui.label(f"expoente {expoente} em binário: {bin(expoente)[2:]} — um passo por bit").classes("font-mono text-xs")
-        _tabela(
-            ["passo", "bit", "r² mod n", "× base mod n"],
-            [[i + 1, p["bit"], p["quadrado"], p.get("multiplica", "—")] for i, p in enumerate(passos)],
-        )
-
-
 def _tabela(colunas: list[str], linhas: list[list]) -> None:
     ui.table(
         columns=[{"name": str(i), "label": c, "field": str(i), "align": "left"} for i, c in enumerate(colunas)],
@@ -611,6 +538,3 @@ def _formatar(valor) -> str:
         return "sim" if valor else "não"
     return str(valor)
 
-
-def _int_b64(texto: str) -> int:
-    return int.from_bytes(base64.b64decode(texto), "big")
