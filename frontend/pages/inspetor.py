@@ -174,6 +174,10 @@ def _cabecalho(d: Detalhe) -> None:
             pilula(texto, tom)
             ui.space()
             ui.label(hora(item.sent_at)).classes("text-xs text-stone-400")
+            ui.button("Evidências dos dois lados", icon="lock",
+                      on_click=lambda: ui.navigate.to(f"/confidencialidade?mensagem={item.message_id}")).props(
+                "flat dense no-caps color=primary"
+            )
             ui.button("Ver o caminho", icon="route", on_click=lambda: ui.navigate.to(f"/caminho?mensagem={item.message_id}")).props(
                 "flat dense no-caps color=primary"
             )

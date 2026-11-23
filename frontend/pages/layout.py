@@ -39,6 +39,7 @@ MENU = (
         ("/chat", "Chat", "forum", False),
     )),
     ("Por dentro da criptografia", (
+        ("/confidencialidade", "Confidencialidade", "lock", False),
         ("/inspetor", "Inspetor", "biotech", False),
         ("/caminho", "Caminho da mensagem", "route", False),
         ("/chaves", "Minhas chaves", "vpn_key", False),
@@ -284,6 +285,25 @@ def numero_seguranca(numero: str) -> None:
     with ui.row().classes("gap-1 flex-wrap"):
         for bloco in numero.split():
             ui.label(bloco).classes("font-mono text-xs bg-stone-100 rounded px-1")
+
+
+def cores_do_codigo(hexadecimal: str, quantidade: int = 8) -> list[str]:
+    """Uma cor por byte do código: dois aparelhos com o mesmo código mostram a mesma faixa."""
+    return [f"hsl({int(hexadecimal[i * 2:i * 2 + 2], 16) * 360 // 256}, 62%, 68%)" for i in range(quantidade)]
+
+
+def codigo_visual(hexadecimal: str, tamanho: str = "sm") -> ui.row:
+    """Código para comparar de olho entre duas telas: faixa de cores + os primeiros dígitos em grupos de 4."""
+    grande = tamanho == "lg"
+    with ui.row().classes("items-center gap-2 no-wrap") as linha:
+        with ui.row().classes("gap-0 no-wrap rounded overflow-hidden shrink-0 ring-1 ring-black/5"):
+            for cor in cores_do_codigo(hexadecimal):
+                ui.element("span").classes("inline-block").style(
+                    f"background:{cor};width:{14 if grande else 9}px;height:{20 if grande else 14}px"
+                )
+        texto = " ".join(hexadecimal[i:i + 4] for i in range(0, 16, 4))
+        ui.label(texto).classes(("text-sm" if grande else "text-xs") + " font-mono txt-tinta whitespace-nowrap")
+    return linha
 
 
 # ---------------------------------------------------------------- lista de mensagens (Inspetor e Caminho)

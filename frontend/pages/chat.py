@@ -387,6 +387,9 @@ def _balao(item: ItemMensagem, grupo: bool) -> None:
             with ui.row().classes("items-center gap-1 no-wrap self-end"):
                 if item.envelopes:
                     with ui.row().classes("acoes-balao items-center gap-0 no-wrap"):
+                        ui.button(icon="lock", on_click=lambda m=item.message_id: ui.navigate.to(f"/confidencialidade?mensagem={m}")).props(
+                            "flat round dense size=xs color=grey-8"
+                        ).tooltip("Evidências de confidencialidade nos dois aparelhos")
                         ui.button(icon="biotech", on_click=lambda m=item.message_id: ui.navigate.to(f"/inspetor?mensagem={m}")).props(
                             "flat round dense size=xs color=grey-8"
                         ).tooltip("Ver a criptografia passo a passo")

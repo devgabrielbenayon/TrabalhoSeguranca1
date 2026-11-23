@@ -11,7 +11,19 @@ from nicegui import ui
 from frontend.api_client import ApiCliente
 from frontend.mensageiro import Mensageiro
 from frontend.observador import ClienteObservador
-from frontend.pages import caminho, chat, chaves, clientes, conta, inicio, inspetor, laboratorio, observador, servidores
+from frontend.pages import (
+    caminho,
+    chat,
+    chaves,
+    clientes,
+    confidencialidade,
+    conta,
+    inicio,
+    inspetor,
+    laboratorio,
+    observador,
+    servidores,
+)
 from frontend.sessao import Sessao
 
 API_URL = os.environ.get("CRIPTOCHAT_API", "http://127.0.0.1:8000")
@@ -27,6 +39,7 @@ conta.registrar_paginas(sessao)
 inicio.registrar_paginas(sessao, mensageiro)
 chat.registrar_paginas(sessao, mensageiro)
 chaves.registrar_paginas(sessao, mensageiro)
+confidencialidade.registrar_paginas(sessao, mensageiro)
 inspetor.registrar_paginas(sessao, mensageiro)
 caminho.registrar_paginas(sessao, mensageiro)
 observador.registrar_paginas(sessao, assinante, mensageiro)

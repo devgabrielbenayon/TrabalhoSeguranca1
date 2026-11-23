@@ -58,6 +58,9 @@ class CacheChaves:
             chave = self._conferir(saida)
             dono = saida.username
             self._por_id[key_id] = (dono, chave)
+            if dono == username and saida.status == "ativa":
+                # quem só recebe também passa a conhecer o fingerprint do contato (e percebe se ele mudar)
+                self.registrar_fingerprint(dono, saida.modo, chave.fingerprint)
         if dono != username:
             raise ChaveSuspeita(f"a chave {key_id} pertence a {dono}, não a {username}")
         return chave

@@ -39,6 +39,7 @@ Variáveis de ambiente: `CRIPTOCHAT_API` (URL do back-end), `CRIPTOCHAT_PORTA`, 
 |---|---|
 | Início | Contadores, estado do aparelho e o roteiro da demonstração |
 | Chat | Conversas 1:1 e em grupo; entrega e assinatura como ícones (o detalhe aparece ao passar o mouse), fila "sem caminho", contador de caracteres e atalhos para o Inspetor e o Caminho |
+| Confidencialidade | O pilar em três provas: (1) a chave sendo criada — um par RSA nasce número a número (p, q, n, φ, e, d) e a privada real aparece no keystore, cifrada; (2) a chave compartilhada — animação das públicas indo ao diretório e ao outro aparelho, conferência dos fingerprints e número de segurança da dupla; (3) evidências dos dois lados — remetente, servidor e destinatário lado a lado, com códigos coloridos (SHA-256) que saem iguais nas telas dos dois aparelhos |
 | Inspetor | Uma mensagem em 7 passos — aparelho de quem envia, rede, aparelho de quem recebe —, com os valores reais ao abrir cada passo (blocos RSA-OAEP, assinatura RSA-PSS), "quem vê o quê" e experimentos (chave errada, bit adulterado) |
 | Caminho da mensagem | O envelope animado sobre a topologia, por destinatário, até a confirmação de entrega. Qualquer usuário, para as próprias mensagens |
 | Minhas chaves | Onde cada chave fica (aparelho, servidor, contatos), as duas metades do par, o ciclo de vida (troca, exclusão, apagar privada) e o diretório de chaves públicas |

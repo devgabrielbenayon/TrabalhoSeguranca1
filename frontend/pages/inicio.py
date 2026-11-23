@@ -14,6 +14,8 @@ from frontend.sessao import Sessao
 # (título, o que fazer, rota, ícone, só administradores)
 ROTEIRO = (
     ("Conversar", "Crie uma conversa e troque mensagens: cada uma sai cifrada e assinada.", "/chat", "forum", False),
+    ("Provar a confidencialidade", "A chave sendo criada, a pública compartilhada e as evidências nos dois aparelhos.",
+     "/confidencialidade", "lock", False),
     ("Ver a criptografia", "No Inspetor, siga a mensagem passo a passo: cifrar, assinar, conferir e decifrar.", "/inspetor", "biotech", False),
     ("Seguir o caminho", "Veja o envelope cifrado atravessar os nós até o destinatário.", "/caminho", "route", False),
     ("Observar o servidor", "O que o servidor e um espião na rede enxergam de todo o tráfego.", "/observador", "hub", True),
