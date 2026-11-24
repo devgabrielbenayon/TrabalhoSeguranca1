@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from backend import nos
 from backend.api import auth, clients, conversations, keys, painel, servers
+from backend.auth import LimiteTentativas
 from backend.db import URL_PADRAO, criar_engine, criar_sessionmaker, criar_tabelas
 from backend.models import Client, Server
 from backend.ws import observer, relay
@@ -21,6 +22,7 @@ def criar_app(url_banco: str = URL_PADRAO, topologia_exemplo: bool = True) -> Fa
     app.state.sessionmaker = criar_sessionmaker(engine)
     app.state.relay = relay.Relay()
     app.state.observador = observer.Observador()
+    app.state.limite_login = LimiteTentativas()
 
     if topologia_exemplo:
         with app.state.sessionmaker() as db:

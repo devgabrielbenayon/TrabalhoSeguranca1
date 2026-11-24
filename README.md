@@ -16,9 +16,13 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-1. **Back-end** (API + relay, porta 8000): `uvicorn backend.main:app --reload`
-   Num banco novo já são criados quatro nós de exemplo (Manaus, São Paulo, Brasília e Recife).
-   Documentação da API: http://127.0.0.1:8000/docs
+1. **Back-end** (API + relay, porta 8000, com TLS): `python -m backend`
+   Na primeira execução são gerados em `data/tls/` uma autoridade certificadora local (`ca.pem`) e o certificado
+   do servidor; o front-end confia só nessa AC. Num banco novo já são criados quatro nós de exemplo (Manaus,
+   São Paulo, Brasília e Recife). Documentação da API: https://127.0.0.1:8000/docs (o navegador avisa que a AC
+   é desconhecida, porque ela é local).
+   Sem TLS, só para depurar: `uvicorn backend.main:app --reload` e `$env:CRIPTOCHAT_API = "http://127.0.0.1:8000"`
+   nos front-ends.
 2. **Aparelho da primeira pessoa** (porta 8080): `python -m frontend.main` e abra http://127.0.0.1:8080
    O primeiro cadastro vira administrador (vê o Observador e altera nós e clientes).
 3. **Aparelho da segunda pessoa** (outro terminal):
@@ -30,8 +34,19 @@ pip install -r requirements.txt
 
 Cada processo do front-end é um aparelho: as chaves privadas ficam só no keystore dele (`data/keystore…`).
 
-Variáveis de ambiente: `CRIPTOCHAT_API` (URL do back-end), `CRIPTOCHAT_PORTA`, `CRIPTOCHAT_HOST`,
-`CRIPTOCHAT_KEYSTORE` e `CRIPTOCHAT_DB` (banco do back-end; padrão `sqlite:///data/criptochat.db`).
+Variáveis de ambiente: `CRIPTOCHAT_API` (URL do back-end; padrão `https://127.0.0.1:8000`), `CRIPTOCHAT_CA`
+(AC em que o front-end confia; padrão `data/tls/ca.pem`), `CRIPTOCHAT_PORTA`, `CRIPTOCHAT_HOST`,
+`CRIPTOCHAT_KEYSTORE`, `CRIPTOCHAT_DB` (banco do back-end; padrão `sqlite:///data/criptochat.db`),
+`CRIPTOCHAT_API_HOST`, `CRIPTOCHAT_API_PORTA` e `CRIPTOCHAT_TLS` (pasta dos certificados do back-end).
+
+## Proteções do canal e do login
+
+- **TLS 1.3** entre front-end e back-end (`https://` e `wss://`): senha, token e metadados não trafegam em claro.
+- **Token fora da URL:** o WebSocket recebe o token na primeira mensagem (`{"type": "auth", "token": …}`), não em
+  `/ws?token=…`, onde ele ficaria em logs de acesso e de proxies. Canal sem autenticação em 10 s é fechado.
+- **Limite de tentativas de login:** 5 falhas em 15 minutos por usuário (ou 20 por IP) bloqueiam novas tentativas
+  com HTTP 429 e `Retry-After`, até a falha mais antiga sair da janela.
+- **Mesmo tempo de resposta** para usuário inexistente e senha errada: o argon2 roda nos dois casos.
 
 ## Telas
 

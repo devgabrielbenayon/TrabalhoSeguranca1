@@ -7,7 +7,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend import chaves, nos
-from backend.auth import emitir_token, hash_senha, revogar_token, token_da_requisicao, usuario_atual, verificar_senha
+from backend.auth import (
+    LimiteTentativas,
+    emitir_token,
+    gastar_tempo_de_verificacao,
+    hash_senha,
+    revogar_token,
+    token_da_requisicao,
+    usuario_atual,
+    verificar_senha,
+)
 from backend.db import get_db
 from backend.models import Client
 from shared.schemas import LoginIn, RegistroIn, RegistroOut, TokenOut, UsuarioOut
@@ -46,11 +55,26 @@ def registrar(dados: RegistroIn, request: Request, tarefas: BackgroundTasks, db:
 
 
 @router.post("/auth/login", response_model=TokenOut)
-def login(dados: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
-    cliente = db.scalar(select(Client).where(Client.username == dados.username.strip().lower()))
-    # mesma resposta para usuário inexistente e senha errada: não revela quem existe
+def login(dados: LoginIn, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+    username = dados.username.strip().lower()
+    ip = request.client.host if request.client else "desconhecido"
+    limite: LimiteTentativas = request.app.state.limite_login
+    espera = limite.espera(username, ip)
+    if espera:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"muitas tentativas de login; tente de novo em {espera} s",
+            headers={"Retry-After": str(espera)},
+        )
+
+    cliente = db.scalar(select(Client).where(Client.username == username))
+    if cliente is None:
+        gastar_tempo_de_verificacao(dados.senha)
+    # mesma resposta (e mesmo tempo) para usuário inexistente e senha errada: não revela quem existe
     if cliente is None or not cliente.ativo or not verificar_senha(cliente.senha_hash, dados.senha):
+        limite.falhou(username, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "usuário ou senha incorretos")
+    limite.acertou(username)
     token, expira_em = emitir_token(db, cliente)
     return TokenOut(token=token, expira_em=expira_em, usuario=UsuarioOut.model_validate(cliente))
 

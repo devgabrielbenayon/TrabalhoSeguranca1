@@ -5,6 +5,7 @@ Para simular dois aparelhos, suba dois processos com CRIPTOCHAT_PORTA (e CRIPTOC
 """
 
 import os
+import ssl
 
 from nicegui import ui
 
@@ -25,13 +26,24 @@ from frontend.pages import (
     servidores,
 )
 from frontend.sessao import Sessao
+from shared.tls import PASTA_PADRAO, ArquivosTls, contexto_cliente
 
-API_URL = os.environ.get("CRIPTOCHAT_API", "http://127.0.0.1:8000")
-WS_URL = API_URL.replace("http", "ws", 1) + "/ws"
+API_URL = os.environ.get("CRIPTOCHAT_API", "https://127.0.0.1:8000")
+WS_URL = API_URL.replace("http", "ws", 1) + "/ws"  # https → wss, http → ws
 PORTA = int(os.environ.get("CRIPTOCHAT_PORTA", "8080"))
 HOST = os.environ.get("CRIPTOCHAT_HOST", "127.0.0.1")  # 0.0.0.0 para abrir na rede local (Docker)
+CA = os.environ.get("CRIPTOCHAT_CA", str(ArquivosTls.na_pasta(PASTA_PADRAO).ca))  # AC gerada por `python -m backend`
 
-sessao = Sessao(ApiCliente(API_URL), os.environ.get("CRIPTOCHAT_KEYSTORE", "data/keystore"))
+
+def _contexto_tls() -> ssl.SSLContext | None:
+    if not API_URL.startswith("https://"):
+        return None
+    if not os.path.exists(CA):
+        raise SystemExit(f"{CA} não existe: suba o back-end com `python -m backend` (gera os certificados) ou defina CRIPTOCHAT_CA")
+    return contexto_cliente(CA)
+
+
+sessao = Sessao(ApiCliente(API_URL, tls=_contexto_tls()), os.environ.get("CRIPTOCHAT_KEYSTORE", "data/keystore"))
 mensageiro = Mensageiro(sessao, WS_URL)
 assinante = ClienteObservador(sessao, WS_URL + "/observer")
 

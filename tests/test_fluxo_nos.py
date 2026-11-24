@@ -1,9 +1,9 @@
 """Nós, reconexão e Observador de ponta a ponta: servidor uvicorn real + aparelhos com o Mensageiro."""
 
 import pytest
-from websockets.exceptions import InvalidStatus
 
 from frontend import inspecao
+from frontend.api_client import ErroApi
 from frontend.mensageiro import Mensageiro
 from frontend.observador import ClienteObservador
 from tests.conftest import esperar
@@ -81,7 +81,7 @@ async def test_quem_nao_e_administrador_nao_assina_o_observador(aparelho, servid
     await _online(aparelho, "alice")
     bob = await _online(aparelho, "bob")
     assinante = ClienteObservador(bob.sessao, servidor["ws"] + "/observer")
-    with pytest.raises(InvalidStatus) as erro:  # recusado antes do aceite: o handshake vira HTTP 403
+    with pytest.raises(ErroApi) as erro:  # o servidor fecha o canal com 4403 depois de ler o token
         await assinante.conectar()
-    assert erro.value.response.status_code == 403
+    assert erro.value.status == 403
     assert assinante.topologia is None

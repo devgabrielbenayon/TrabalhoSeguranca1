@@ -9,9 +9,10 @@ import asyncio
 import json
 import logging
 
-from websockets.asyncio.client import ClientConnection, connect
+from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosed
 
+from frontend.canal import abrir_canal
 from frontend.sessao import Sessao
 from shared.schemas import TopologiaOut
 
@@ -50,7 +51,7 @@ class ClienteObservador:
     async def conectar(self) -> None:
         if self.conectado:
             return
-        self._ws = await connect(f"{self.ws_url}?token={self.sessao.api.token}")
+        self._ws = await abrir_canal(self.ws_url, self.sessao.api.token, self.sessao.api.tls)
         self._tarefa = asyncio.create_task(self._receber())
 
     async def desconectar(self) -> None:

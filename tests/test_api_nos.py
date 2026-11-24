@@ -223,16 +223,18 @@ def test_adulteracao_de_demonstracao_quebra_a_assinatura(api, alice, bob):
 # ---------------------------------------------------------------- Observador
 
 
-@pytest.mark.parametrize("token", ["inventado", None])
-def test_observador_so_para_administradores(api, alice, bob, token):
-    with pytest.raises(WebSocketDisconnect):
-        with api.websocket_connect(f"/ws/observer?token={token or bob.token}") as ws:
+@pytest.mark.parametrize(("token", "codigo"), [("inventado", 4401), (None, 4403)])
+def test_observador_so_para_administradores(api, alice, bob, token, codigo):
+    with pytest.raises(WebSocketDisconnect) as erro:
+        with api.websocket_connect("/ws/observer") as ws:
+            ws.send_json({"type": "auth", "token": token or bob.token})
             ws.receive_json()
+    assert erro.value.code == codigo
 
 
 def test_observador_ve_o_transito_mas_nao_o_texto(api, alice, bob):
     conversa = _conversa(api, alice, bob)["id"]
-    with api.websocket_connect(f"/ws/observer?token={alice.token}") as observador:
+    with alice.ws(api, "/ws/observer") as observador:
         topologia = observador.receive_json()
         assert topologia["type"] == "topologia" and len(topologia["nos"]) == 4
         assert observador.receive_json() == {"type": "historico", "eventos": []}

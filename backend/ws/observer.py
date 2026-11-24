@@ -13,12 +13,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend import nos
-from backend.auth import cliente_do_token
+from backend.ws.autenticacao import FECHAMENTO_NAO_AUTORIZADO, FECHAMENTO_PROIBIDO, autenticar
 
 router = APIRouter()
 
-FECHAMENTO_NAO_AUTORIZADO = 4401
-FECHAMENTO_PROIBIDO = 4403
+__all__ = ["FECHAMENTO_NAO_AUTORIZADO", "FECHAMENTO_PROIBIDO", "Observador", "router"]
 
 
 class Observador:
@@ -44,16 +43,21 @@ class Observador:
 
 
 @router.websocket("/ws/observer")
-async def canal_observador(ws: WebSocket, token: str = "") -> None:
+async def canal_observador(ws: WebSocket) -> None:
     observador: Observador = ws.app.state.observador
+    cliente = await autenticar(ws, ws.app.state.sessionmaker)
+    if cliente is None:
+        return
+    if not cliente.is_admin:
+        await ws.close(code=FECHAMENTO_PROIBIDO)
+        return
     with ws.app.state.sessionmaker() as db:
-        cliente = cliente_do_token(db, token)
-        if cliente is None or not cliente.is_admin:
-            await ws.close(code=FECHAMENTO_NAO_AUTORIZADO if cliente is None else FECHAMENTO_PROIBIDO)
-            return
         topologia = nos.topologia(db, ws.app.state.relay.conectados())
 
-    await ws.accept()
+    try:
+        await ws.send_json({"type": "autenticado", "usuario": cliente.username})  # antes de qualquer evento
+    except (RuntimeError, WebSocketDisconnect):
+        return
     observador._conexoes.add(ws)
     try:
         await ws.send_json({"type": "topologia", **topologia.model_dump()})

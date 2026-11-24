@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from typing import Any, Iterable
 
 import httpx
@@ -43,8 +44,13 @@ class ApiCliente:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
         event_hooks: dict | None = None,
+        tls: ssl.SSLContext | None = None,
     ) -> None:
-        self._http = httpx.AsyncClient(base_url=base_url, transport=transport, timeout=15, event_hooks=event_hooks)
+        """`tls`: contexto que confia na AC do servidor (https://); o mesmo vale para o wss:// do Mensageiro."""
+        self.tls = tls
+        self._http = httpx.AsyncClient(
+            base_url=base_url, transport=transport, timeout=15, event_hooks=event_hooks, verify=tls if tls is not None else True
+        )
         self.token: str | None = None
 
     async def fechar(self) -> None:

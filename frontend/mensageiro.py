@@ -17,10 +17,11 @@ from datetime import datetime, timezone
 from typing import Callable, Literal
 
 import httpx
-from websockets.asyncio.client import ClientConnection, connect
+from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
 from frontend.api_client import ErroApi
+from frontend.canal import abrir_canal
 from frontend.key_cache import CacheChaves, ChaveSuspeita, SemChave
 from frontend.keystore import ChaveNaoEncontrada
 from frontend.sessao import Sessao
@@ -137,7 +138,7 @@ class Mensageiro:
             self._adicionar_conversa(conversa)
         for conversa in list(self.conversas.values()):
             await self.carregar_historico(conversa.id)
-        self._ws = await connect(f"{self.ws_url}?token={self.sessao.api.token}")
+        self._ws = await abrir_canal(self.ws_url, self.sessao.api.token, self.sessao.api.tls)
         self._tarefa = asyncio.create_task(self._receber())
         self._mudou()
 

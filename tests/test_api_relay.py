@@ -1,6 +1,7 @@
 """Conversas, histórico e regras do relay WebSocket — direto na API, com chaves didáticas (rápidas)."""
 
 import base64
+from contextlib import contextmanager
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +13,16 @@ from backend.models import EnvelopeRegistro
 from shared.crypto import rsa_didatico, rsa_real
 from shared.crypto.envelope import montar_envelopes
 from shared.crypto.prova import mensagem_prova
+
+
+@contextmanager
+def canal(api, token, rota="/ws"):
+    """Abre o canal e se autentica com o token na primeira mensagem."""
+    with api.websocket_connect(rota) as ws:
+        ws.send_json({"type": "auth", "token": token})
+        resposta = ws.receive_json()
+        assert resposta["type"] == "autenticado", resposta
+        yield ws
 
 
 class Usuario:
@@ -28,8 +39,8 @@ class Usuario:
         self.token = token
         self.headers = {"Authorization": f"Bearer {token}"}
 
-    def ws(self, api):
-        return api.websocket_connect(f"/ws?token={self.token}")
+    def ws(self, api, rota="/ws"):
+        return canal(api, self.token, rota)
 
     def envio(self, conversa, texto, destinos, modo="didatico", **kwargs):
         envelopes = montar_envelopes(texto, self.nome, self.privadas[modo], destinos, conversa, **kwargs)
@@ -104,10 +115,31 @@ def test_historico_de_quem_nao_participa(api, alice, bob, carol):
 # ---------------------------------------------------------------- canal
 
 
-def test_token_invalido_fecha_o_canal(api):
+@pytest.mark.parametrize("primeira", [{"type": "auth", "token": "inventado"}, {"type": "auth"}, {"type": "send"}, "texto"])
+def test_token_invalido_fecha_o_canal(api, primeira):
     with pytest.raises(WebSocketDisconnect) as erro:
-        with api.websocket_connect("/ws?token=inventado") as ws:
+        with api.websocket_connect("/ws") as ws:
+            ws.send_json(primeira)
             ws.receive_json()
+    assert erro.value.code == 4401
+
+
+def test_token_na_url_nao_vale(api, alice):
+    """O token só é aceito na primeira mensagem: na URL ele vazaria para logs de acesso e proxies."""
+    with pytest.raises(WebSocketDisconnect) as erro:
+        with api.websocket_connect(f"/ws?token={alice.token}") as ws:
+            ws.send_json({"type": "ack", "message_id": "x"})
+            ws.receive_json()
+    assert erro.value.code == 4401
+
+
+def test_canal_sem_autenticacao_expira(api, monkeypatch):
+    from backend.ws import autenticacao
+
+    monkeypatch.setattr(autenticacao, "TEMPO_AUTENTICACAO_S", 0.2)
+    with pytest.raises(WebSocketDisconnect) as erro:
+        with api.websocket_connect("/ws") as ws:
+            ws.receive_json()  # não envia nada
     assert erro.value.code == 4401
 
 

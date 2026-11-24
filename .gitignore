@@ -31,3 +31,6 @@ htmlcov/
 *.db
 data/
 .nicegui/
+
+# Videos ficam fora do Git (link no README)
+*.mp4

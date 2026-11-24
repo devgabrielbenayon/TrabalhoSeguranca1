@@ -232,7 +232,7 @@ def _visao_interceptador(evento: dict) -> None:
     with secao(
         "Visão do interceptador",
         "wifi_tethering_error",
-        "Um espião na rede (ws:// sem TLS) captura o quadro inteiro, metadados inclusive.",
+        "Sem TLS (ws://), um espião na rede capturaria o quadro inteiro, metadados inclusive. Com TLS (wss://) ele vê só bytes cifrados.",
     ).classes("grow basis-96"):
         quadro = json.dumps({"type": "message", "envelope": evento["envelope"]}, ensure_ascii=False)
         ui.code(encurtar(quadro, 280), language="json").classes("w-full text-xs")

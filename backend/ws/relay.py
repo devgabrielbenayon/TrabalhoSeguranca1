@@ -20,10 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend import chaves, nos, transito
-from backend.auth import cliente_do_token
 from backend.db import agora
 from backend.models import Client, Conversation, EnvelopeRegistro, Message
-from backend.ws.observer import FECHAMENTO_NAO_AUTORIZADO
+from backend.ws.autenticacao import FECHAMENTO_NAO_AUTORIZADO, autenticar
 from shared.schemas import AckWS, ChavePublicaOut, EnvioWS
 
 if TYPE_CHECKING:
@@ -259,18 +258,19 @@ async def _entregar(relay: Relay, fabrica: sessionmaker[Session], observador: Ob
 
 
 @router.websocket("/ws")
-async def canal(ws: WebSocket, token: str = "") -> None:
+async def canal(ws: WebSocket) -> None:
     relay: Relay = ws.app.state.relay
     observador: Observador = ws.app.state.observador
     fabrica: sessionmaker[Session] = ws.app.state.sessionmaker
 
-    with fabrica() as db:
-        cliente = cliente_do_token(db, token)
+    cliente = await autenticar(ws, fabrica)
     if cliente is None:
-        await ws.close(code=FECHAMENTO_NAO_AUTORIZADO)
+        return
+    try:
+        await ws.send_json({"type": "autenticado", "usuario": cliente.username})  # antes de qualquer entrega
+    except (RuntimeError, WebSocketDisconnect):
         return
 
-    await ws.accept()
     relay.adicionar(cliente.id, ws)
     await observador.publicar({"type": "conexao", "usuario": cliente.username, "online": True})
     try:
